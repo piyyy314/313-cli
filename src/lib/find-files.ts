@@ -121,7 +121,11 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
         foundAll.push(fileFound);
       }
     }
-    const filteredOutFiles = foundAll.filter((f) => !found.includes(f));
+    // Bolt: Performance optimization to avoid O(N*M) lookup.
+    // Converting 'found' to a Set reduces lookup to O(1) per element, bringing the overall
+    // step complexity down to O(N + M) from O(N * M), which is crucial for larger repositories.
+    const foundSet = new Set(found);
+    const filteredOutFiles = foundAll.filter((f) => !foundSet.has(f));
     if (filteredOutFiles.length) {
       debug(
         `Filtered out ${filteredOutFiles.length}/${
