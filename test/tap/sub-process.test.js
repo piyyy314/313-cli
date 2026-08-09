@@ -45,13 +45,24 @@ function isSupported() {
 
 test('sub-process.execute executes sub processes', function (t) {
   if (isSupported()) {
-    t.test('runs in shell', function (t) {
+    t.test('runs in shell when shell: true', function (t) {
+      t.plan(1);
+
+      subProcess
+        .execute('echo', [shellVar], { shell: true })
+        .then(function (result) {
+          t.not(result.trim(), shellVar, 'evaluates shell variable');
+        })
+        .catch(t.fail);
+    });
+
+    t.test('does not run in shell when shell: false (default)', function (t) {
       t.plan(1);
 
       subProcess
         .execute('echo', [shellVar])
         .then(function (result) {
-          t.not(result.trim(), shellVar, 'evaluates shell variable');
+          t.equal(result.trim(), shellVar, 'does not evaluate shell variable');
         })
         .catch(t.fail);
     });
@@ -61,14 +72,14 @@ test('sub-process.execute executes sub processes', function (t) {
     t.plan(2);
 
     subProcess
-      .execute(script('stdout-echo'), ['hello world'])
+      .execute(script('stdout-echo'), ['hello world'], { shell: true })
       .then(function (result) {
         t.match(result, 'hello world', 'should resolve with stdout');
       })
       .catch(t.fail);
 
     subProcess
-      .execute(script('stderr-echo'), ['hello error'])
+      .execute(script('stderr-echo'), ['hello error'], { shell: true })
       .then(function (result) {
         t.match(result, 'hello error', 'should resolve with stderr');
       })
@@ -79,7 +90,7 @@ test('sub-process.execute executes sub processes', function (t) {
     t.plan(2);
 
     subProcess
-      .execute(script('stdout-echo-fail'), ['hello world'])
+      .execute(script('stdout-echo-fail'), ['hello world'], { shell: true })
       .then(function () {
         t.fail('should not have resolved');
       })
@@ -88,7 +99,7 @@ test('sub-process.execute executes sub processes', function (t) {
       });
 
     subProcess
-      .execute(script('stderr-echo-fail'), ['hello error'])
+      .execute(script('stderr-echo-fail'), ['hello error'], { shell: true })
       .then(function () {
         t.fail('should not have resolved');
       })
@@ -107,7 +118,7 @@ test('sub-process.execute executes sub processes', function (t) {
 
       const explicitWorkDir = path.resolve(path.join(__dirname, 'support'));
       subProcess
-        .execute(script('pwd'), [], { cwd: explicitWorkDir })
+        .execute(script('pwd'), [], { cwd: explicitWorkDir, shell: true })
         .then(function (result) {
           t.match(result, explicitWorkDir, 'specifies the working directory');
         })
@@ -115,7 +126,7 @@ test('sub-process.execute executes sub processes', function (t) {
 
       const currentWorkDir = process.cwd();
       subProcess
-        .execute(script('pwd'), [])
+        .execute(script('pwd'), [], { shell: true })
         .then(function (result) {
           t.match(
             result,
