@@ -45,13 +45,38 @@ function isSupported() {
 
 test('sub-process.execute executes sub processes', function (t) {
   if (isSupported()) {
-    t.test('runs in shell', function (t) {
+    t.test(
+      'does not run in shell by default (mitigates command injection)',
+      function (t) {
+        t.plan(1);
+
+        subProcess
+          .execute('echo', [shellVar])
+          .then(function (result) {
+            t.equal(
+              result.trim(),
+              shellVar,
+              'does not evaluate shell variable by default',
+            );
+          })
+          .catch(function () {
+            // On Windows, running a shell built-in without shell: true results in failure (ENOENT), which is secure and correct.
+            t.pass('does not run shell-builtin or fails securely');
+          });
+      },
+    );
+
+    t.test('runs in shell if explicitly opted in', function (t) {
       t.plan(1);
 
       subProcess
-        .execute('echo', [shellVar])
+        .execute('echo', [shellVar], { shell: true })
         .then(function (result) {
-          t.not(result.trim(), shellVar, 'evaluates shell variable');
+          t.not(
+            result.trim(),
+            shellVar,
+            'evaluates shell variable when shell: true',
+          );
         })
         .catch(t.fail);
     });
