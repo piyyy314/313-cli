@@ -17,9 +17,12 @@ const debug = debugModule('snyk:find-files');
  *
  * @param path file path.
  */
-export async function readDirectory(path: string): Promise<string[]> {
+export async function readDirectory(
+  path: string,
+  options?: any,
+): Promise<any[]> {
   return await new Promise((resolve, reject) => {
-    fs.readdir(path, (err, files) => {
+    fs.readdir(path, options || {}, (err, files) => {
       if (err) {
         reject(err);
       }
@@ -170,19 +173,54 @@ async function findInDirectory(
   findConfig: FindFilesConfig,
 ): Promise<FindFilesRes> {
   const config: DefaultFindConfig = assign({}, defaultFindConfig, findConfig);
-  const files = await readDirectory(config.path);
-  const toFind = files
-    .filter((file) => !config.ignore.includes(file))
-    .map((file) => pathLib.resolve(config.path, file))
+  // Perform directory reading with file types to distinguish files from directories without stat calls.
+  // This drastically reduces I/O calls (stats) when recursing through directories.
+  const dirents: fs.Dirent[] = await readDirectory(config.path, {
+    withFileTypes: true,
+  });
+
+  const toFind = dirents
+    .filter((dirent) => !config.ignore.includes(dirent.name))
+    .map((dirent) => {
+      const resolvedPath = pathLib.resolve(config.path, dirent.name);
+      return { dirent, resolvedPath };
+    })
     .filter(
-      (resolvedPath) => !isExcludedPath(resolvedPath, config.excludePaths),
+      ({ resolvedPath }) => !isExcludedPath(resolvedPath, config.excludePaths),
     )
-    .map((resolvedPath) => {
-      if (!fs.existsSync(resolvedPath)) {
-        debug('File does not seem to exist, skipping: ', resolvedPath);
-        return { files: [], allFilesFound: [] };
+    .map(async ({ dirent, resolvedPath }) => {
+      try {
+        let isDirectory = dirent.isDirectory();
+        let isFile = dirent.isFile();
+
+        // If the entry is a symbolic link, we must resolve it via fs.stat to find out its actual type.
+        if (dirent.isSymbolicLink()) {
+          const stats = await getStats(resolvedPath);
+          isDirectory = stats.isDirectory();
+          isFile = stats.isFile();
+        }
+
+        if (isDirectory) {
+          // If it is a directory, continue searching inside it recursively if levelsDeep permits.
+          if (config.levelsDeep <= 0) {
+            return { files: [], allFilesFound: [] };
+          }
+          return find({ ...config, path: resolvedPath });
+        } else if (isFile) {
+          // Verify that file exists (or resolved symlink file exists)
+          if (!fs.existsSync(resolvedPath)) {
+            debug('File does not seem to exist, skipping: ', resolvedPath);
+            return { files: [], allFilesFound: [] };
+          }
+          const fileFound = findFile(resolvedPath, config.filter);
+          if (fileFound) {
+            return { files: [fileFound], allFilesFound: [fileFound] };
+          }
+        }
+      } catch (err) {
+        debug('Error processing directory entry:', resolvedPath, err);
       }
-      return find({ ...config, path: resolvedPath });
+      return { files: [], allFilesFound: [] };
     });
 
   const found = await Promise.all(toFind);
