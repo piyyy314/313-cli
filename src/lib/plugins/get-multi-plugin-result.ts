@@ -278,6 +278,15 @@ async function processWorkspacesProjects(
   }
 }
 
+/**
+ * Filters target files that were not covered by scanned workspace projects.
+ *
+ * @param root - Workspace root used to resolve project paths
+ * @param scannedProjects - Projects successfully scanned by the workspace processor
+ * @param allTargetFiles - Files selected for scanning
+ * @param lockFile - Lockfile name associated with the workspace
+ * @returns Target files that remain unprocessed
+ */
 export function filterOutProcessedWorkspaces(
   root: string,
   scannedProjects: ScannedProjectCustom[],
@@ -286,9 +295,14 @@ export function filterOutProcessedWorkspaces(
 ) {
   const targetFiles: string[] = [];
 
-  const scanned = scannedProjects
-    .map((p) => p.targetFile!)
-    .map((p) => pathLib.resolve(process.cwd(), root, p));
+  // Bolt: Performance optimization to avoid O(N*M) lookup.
+  // Converting 'scanned' to a Set reduces lookup to O(1) per element, bringing the overall
+  // loop complexity down to O(N + M) from O(N * M), which is crucial for larger workspaces.
+  const scanned = new Set(
+    scannedProjects
+      .map((p) => p.targetFile!)
+      .map((p) => pathLib.resolve(process.cwd(), root, p)),
+  );
   const all = allTargetFiles.map((p) => ({
     path: pathLib.resolve(process.cwd(), root, p),
     original: p,
@@ -304,7 +318,7 @@ export function filterOutProcessedWorkspaces(
     }
     // standardise to package.json
     // we discover the lockfiles but targetFile is package.json
-    if (!scanned.includes(path.replace(lockFile, 'package.json'))) {
+    if (!scanned.has(path.replace(lockFile, 'package.json'))) {
       targetFiles.push(original);
       continue;
     }

@@ -79,12 +79,11 @@ const defaultFindConfig: DefaultFindConfig = {
 };
 
 /**
- * Find all files in given search path. Returns paths to files found.
+ * Recursively searches a file or directory for matching manifest files.
  *
- * @param path file path to search.
- * @param ignore (optional) files to ignore. Will always ignore node_modules.
- * @param filter (optional) file names to find. If not provided all files are returned.
- * @param levelsDeep (optional) how many levels deep to search, defaults to two, this path and one sub directory.
+ * @param findConfig - Search path and optional filtering, exclusion, depth, and feature-flag settings.
+ * @returns Matching preferred manifest paths and all discovered file paths.
+ * @throws An error when the search encounters a filesystem or traversal failure.
  */
 export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
   const config: DefaultFindConfig = assign({}, defaultFindConfig, findConfig);
@@ -121,7 +120,11 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
         foundAll.push(fileFound);
       }
     }
-    const filteredOutFiles = foundAll.filter((f) => !found.includes(f));
+    // Bolt: Performance optimization to avoid O(N*M) lookup.
+    // Converting 'found' to a Set reduces lookup to O(1) per element, bringing the overall
+    // step complexity down to O(N + M) from O(N * M), which is crucial for larger repositories.
+    const foundSet = new Set(found);
+    const filteredOutFiles = foundAll.filter((f) => !foundSet.has(f));
     if (filteredOutFiles.length) {
       debug(
         `Filtered out ${filteredOutFiles.length}/${
