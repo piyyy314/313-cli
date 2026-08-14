@@ -79,12 +79,11 @@ const defaultFindConfig: DefaultFindConfig = {
 };
 
 /**
- * Find all files in given search path. Returns paths to files found.
+ * Recursively searches a file or directory for matching manifest files.
  *
- * @param path file path to search.
- * @param ignore (optional) files to ignore. Will always ignore node_modules.
- * @param filter (optional) file names to find. If not provided all files are returned.
- * @param levelsDeep (optional) how many levels deep to search, defaults to two, this path and one sub directory.
+ * @param findConfig - Search path and optional filtering, exclusion, depth, and feature-flag settings.
+ * @returns Matching preferred manifest paths and all discovered file paths.
+ * @throws An error when the search encounters a filesystem or traversal failure.
  */
 export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
   const config: DefaultFindConfig = assign({}, defaultFindConfig, findConfig);

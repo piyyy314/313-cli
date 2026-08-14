@@ -278,6 +278,15 @@ async function processWorkspacesProjects(
   }
 }
 
+/**
+ * Filters target files that were not covered by scanned workspace projects.
+ *
+ * @param root - Workspace root used to resolve project paths
+ * @param scannedProjects - Projects successfully scanned by the workspace processor
+ * @param allTargetFiles - Files selected for scanning
+ * @param lockFile - Lockfile name associated with the workspace
+ * @returns Target files that remain unprocessed
+ */
 export function filterOutProcessedWorkspaces(
   root: string,
   scannedProjects: ScannedProjectCustom[],
