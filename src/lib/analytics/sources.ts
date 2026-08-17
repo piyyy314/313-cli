@@ -8,7 +8,7 @@
   Integration name is validated with a list
 */
 
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import * as createDebug from 'debug';
 import * as fs from 'fs';
 import { join } from 'path';
@@ -156,11 +156,12 @@ export function validateHomebrew(snykExecutablePath: string): boolean {
   return false;
 }
 
-function runCommand(cmd: string): Promise<string> {
-  return new Promise((resolve) => {
-    exec(cmd, (error, stdout, stderr) => {
+export function runCommand(cmd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, (error, stdout, stderr) => {
       if (error) {
         debug("Error trying to get program's version", error);
+        return reject(error);
       }
       return resolve(stdout ? stdout : stderr);
     });
@@ -169,15 +170,17 @@ function runCommand(cmd: string): Promise<string> {
 
 export async function isInstalled(commandToCheck: string): Promise<boolean> {
   let whichCommand = 'which';
+  let args = [commandToCheck];
   const os = process.platform;
   if (os === 'win32') {
     whichCommand = 'where';
   } else if (os === 'android') {
-    whichCommand = 'adb shell which';
+    whichCommand = 'adb';
+    args = ['shell', 'which', commandToCheck];
   }
 
   try {
-    await runCommand(`${whichCommand} ${commandToCheck}`);
+    await runCommand(whichCommand, args);
   } catch (error) {
     return false;
   }
