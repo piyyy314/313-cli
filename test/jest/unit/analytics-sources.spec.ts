@@ -9,6 +9,7 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
@@ -184,6 +185,19 @@ describe('getIntegrationEnvironment', () => {
         { integrationEnvironment: 'PhpStorm', ...defaultArgsParams },
       ]),
     ).toBe('PhpStorm');
+  });
+});
+
+describe('isInstalled', () => {
+  it('returns true when executable is found on system', async () => {
+    // node is guaranteed to be present in test environment
+    const result = await isInstalled('node');
+    expect(result).toBe(true);
+  });
+
+  it('returns false when executable is not found or fails execution', async () => {
+    const result = await isInstalled('non_existent_executable_12345');
+    expect(result).toBe(false);
   });
 });
 
