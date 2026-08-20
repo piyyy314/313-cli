@@ -88,7 +88,7 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(payload);
+    const payloadStr = jsonStringifyLargeObject(sanitizePayloadForLog(payload));
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
@@ -124,7 +124,7 @@ function setupRequest(payload: Payload) {
 
   const proxyUri = getProxyForUrl(url);
   if (proxyUri) {
-    snykDebug('using proxy:', proxyUri);
+    snykDebug('using proxy:', sanitizeUrlForLog(proxyUri));
     bootstrap({
       environmentVariableNamespace: '',
     });
@@ -138,6 +138,43 @@ function setupRequest(payload: Payload) {
   }
 
   return { method, url, data, options };
+}
+
+export function sanitizeUrlForLog(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.username || parsed.password) {
+      parsed.username = '[REDACTED]';
+      parsed.password = '[REDACTED]';
+    }
+    return parsed.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
+export function sanitizePayloadForLog(payload: Payload): Payload {
+  if (!payload) {
+    return payload;
+  }
+  const sanitized = { ...payload };
+  if (sanitized.headers) {
+    const headers = { ...sanitized.headers };
+    const sensitiveHeaderKeys = [
+      'authorization',
+      'x-api-key',
+      'session-token',
+      'sessiontoken',
+      'cookie',
+    ];
+    for (const key of Object.keys(headers)) {
+      if (sensitiveHeaderKeys.includes(key.toLowerCase())) {
+        headers[key] = '[REDACTED]';
+      }
+    }
+    sanitized.headers = headers;
+  }
+  return sanitized;
 }
 
 export async function makeRequest(
