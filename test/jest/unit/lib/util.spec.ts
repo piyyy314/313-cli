@@ -63,6 +63,24 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[1].username).toEqual('username-set');
     expect(resultWithFlag[1].password).toEqual('password-set');
   });
+
+  it('should obfuscate token, tfc-token, and tfcToken when provided', () => {
+    const argsWithTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: ['snyk/goof-image:latest'],
+      org: 'demo-org',
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-456',
+      tfcToken: 'tfc-secret-789',
+    };
+
+    const resultWithTokens = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(resultWithTokens.token).toEqual('token-set');
+    expect(resultWithTokens['tfc-token']).toEqual('tfc-token-set');
+    expect(resultWithTokens.tfcToken).toEqual('tfcToken-set');
+    expect(resultWithTokens.org).toEqual('demo-org');
+  });
 });
 
 describe('truncateForLog', () => {

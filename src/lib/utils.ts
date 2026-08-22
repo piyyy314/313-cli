@@ -13,18 +13,28 @@ export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
-  if (obfuscatedArgs['username']) {
-    obfuscatedArgs['username'] = 'username-set';
-  }
-  if (obfuscatedArgs[1] && obfuscatedArgs[1]['username']) {
-    obfuscatedArgs[1]['username'] = 'username-set';
-  }
+  const keysToObfuscate = [
+    'username',
+    'password',
+    'token',
+    'tfc-token',
+    'tfcToken',
+  ];
 
-  if (obfuscatedArgs['password']) {
-    obfuscatedArgs['password'] = 'password-set';
-  }
-  if (obfuscatedArgs[1] && obfuscatedArgs[1]['password']) {
-    obfuscatedArgs[1]['password'] = 'password-set';
+  const obfuscateObject = (obj: any) => {
+    if (!obj || typeof obj !== 'object') {
+      return;
+    }
+    for (const key of keysToObfuscate) {
+      if (obj[key]) {
+        obj[key] = `${key}-set`;
+      }
+    }
+  };
+
+  obfuscateObject(obfuscatedArgs);
+  if (Array.isArray(obfuscatedArgs) && obfuscatedArgs[1]) {
+    obfuscateObject(obfuscatedArgs[1]);
   }
 
   return obfuscatedArgs;
