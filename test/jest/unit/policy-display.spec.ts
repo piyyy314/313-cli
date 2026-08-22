@@ -23,3 +23,38 @@ it('test sensibly bails if gets an old .snyk format', async () => {
 
   expect(result).toEqual(expected);
 });
+
+it('correctly maps license vs vulnerability URLs when displaying policy rules', async () => {
+  const loadedPolicy = {
+    version: 'v1.0.0',
+    __filename: '.snyk',
+    __created: new Date().toISOString(),
+    __modified: new Date().toISOString(),
+    ignore: {
+      'snyk:lic:npm:foo:GPL-2.0': [
+        {
+          '*': {
+            reason: 'license accepted',
+          },
+        },
+      ],
+      'SNYK-JS-LODASH-567746': [
+        {
+          '*': {
+            reason: 'not affected',
+          },
+        },
+      ],
+    },
+    patch: {},
+    exclude: {},
+  } as any;
+
+  const displayOutput = stripAnsi(await display(loadedPolicy));
+  expect(displayOutput).toContain(
+    'https://snyk.io/vuln/snyk:lic:npm:foo:GPL-2.0',
+  );
+  expect(displayOutput).toContain(
+    'https://security.snyk.io/vuln/SNYK-JS-LODASH-567746',
+  );
+});

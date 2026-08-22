@@ -61,9 +61,11 @@ function displayRule(title: string): (rule: VulnRules, i: number) => string {
   };
 }
 
+// Pre-compiled regex to avoid creating a new RegExp instance on every policy demunge rule lookup.
+const SNYK_LIC_REGEX = /^snyk:lic/i;
+
 function apiRoot(vulnId: string) {
-  const match = new RegExp(/^snyk:lic/i).test(vulnId);
-  if (match) {
+  if (SNYK_LIC_REGEX.test(vulnId)) {
     return config.PUBLIC_LICENSE_URL;
   }
   return config.PUBLIC_VULN_DB_URL;
