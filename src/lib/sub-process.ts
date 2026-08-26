@@ -5,16 +5,13 @@ export function execute(
   args: string[],
   options?: { cwd?: string; shell?: boolean },
 ): Promise<string> {
-  // Default to shell: false to prevent OS command injection vulnerabilities.
-  // Explicit shell execution can be enabled via options.
-  const spawnOptions: childProcess.SpawnOptions = { shell: false };
-  if (options) {
-    if (options.cwd) {
-      spawnOptions.cwd = options.cwd;
-    }
-    if (options.shell !== undefined) {
-      spawnOptions.shell = options.shell;
-    }
+  // Security Hardening: Default to shell: false to prevent OS command injection.
+  // Callers requiring shell features must explicitly opt-in with { shell: true }.
+  const spawnOptions: childProcess.SpawnOptions = {
+    shell: options?.shell ?? false,
+  };
+  if (options && options.cwd) {
+    spawnOptions.cwd = options.cwd;
   }
 
   return new Promise((resolve, reject) => {
