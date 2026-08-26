@@ -9,13 +9,14 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const sensitiveKeys = ['username', 'password', 'token', 'tfc-token'];
+const SENSITIVE_KEYS = ['username', 'password', 'token', 'tfc-token'];
 
 export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
-  for (const key of sensitiveKeys) {
+
+  for (const key of SENSITIVE_KEYS) {
     if (obfuscatedArgs[key]) {
       obfuscatedArgs[key] = `${key}-set`;
     }
