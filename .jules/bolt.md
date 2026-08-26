@@ -1,7 +1,5 @@
-# Bolt Performance Journal
+# Bolt's Journal
 
-## 2026-08-11 - O(1) Set caching over recursive directory traversals with WeakMap
-
-**Learning:** During recursive file and directory traversal operations (such as `find` in `find-files.ts`), lookup checks (like `isExcludedPath`) are called for every single traversed node with the exact same list of exclusion paths. Standard array searching (`Array.includes` or `Array.some`) takes $O(N)$ per call, yielding $O(M \times N)$ time overall for $M$ files and $N$ exclusions. On Windows, this is worsened by string lowercasing inside the loop. By mapping the array reference to a pre-computed case-normalized `Set` using a `WeakMap`, lookups are optimized to $O(1)$ without changing public API signatures or risking memory leaks.
-
-**Action:** Whenever a recursive search, walk, or loop performs repeated checks against a shared configuration array, convert that array into a `Set` (and cache it via `WeakMap` if the array is passed by reference) to avoid quadratic overhead.
+## 2026-08-10 - Optimizing Environment & Container Detection Checks
+**Learning:** Checking environmental properties like CI status using `Object.keys(process.env).some(...)` causes redundant array allocations and $O(n)$ scanning of the process environment on every single lookup. Similarly, checking if running in a Docker container using synchronous file system reads (`fs.statSync` and `fs.readFileSync`) blocks the thread and incurs heavy overhead when executed repetitively. Caching these checks at the module level while bypassing the cache in test environments (`process.env.NODE_ENV === 'test'`) delivers huge speedups and keeps unit tests perfectly clean and isolated.
+**Action:** Always prefer checking specific Set keys directly on `process.env` (which has $O(1)$ complexity) instead of scanning/allocating keys. Cache immutable environmental checks after the first execution using test-safe conditions.

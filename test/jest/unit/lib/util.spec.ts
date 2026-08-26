@@ -83,6 +83,39 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[1].token).toEqual('token-set');
     expect(resultWithFlag[1]['tfc-token']).toEqual('tfc-token-set');
   });
+
+  it('should obfuscate token and tfc-token when provided', () => {
+    const argsWithTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: ['snyk/goof-image:latest'],
+      org: 'demo-org',
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-456',
+    };
+
+    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(result.token).toEqual('token-set');
+    expect(result['tfc-token']).toEqual('tfc-token-set');
+    expect(result.org).toEqual('demo-org');
+  });
+
+  it('should obfuscate nested tokens in MethodArgs', () => {
+    const argsWithNestedTokens: MethodArgs = [
+      'snyk/goof-image:latest',
+      {
+        _doubleDashArgs: [],
+        _: ['snyk/goof-image:latest'],
+        token: 'secret-token-123',
+        'tfc-token': 'tfc-secret-456',
+      },
+    ];
+
+    const result = obfuscateArgs(argsWithNestedTokens);
+
+    expect(result[1].token).toEqual('token-set');
+    expect(result[1]['tfc-token']).toEqual('tfc-token-set');
+  });
 });
 
 describe('truncateForLog', () => {
