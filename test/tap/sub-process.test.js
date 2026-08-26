@@ -49,7 +49,7 @@ test('sub-process.execute executes sub processes', function (t) {
       t.plan(1);
 
       subProcess
-        .execute('echo', [shellVar])
+        .execute('echo', [shellVar], { shell: true })
         .then(function (result) {
           t.not(result.trim(), shellVar, 'evaluates shell variable');
         })
@@ -76,7 +76,7 @@ test('sub-process.execute executes sub processes', function (t) {
   });
 
   t.test('error during execution', function (t) {
-    t.plan(2);
+    t.plan(3);
 
     subProcess
       .execute(script('stdout-echo-fail'), ['hello world'])
@@ -97,6 +97,18 @@ test('sub-process.execute executes sub processes', function (t) {
           err,
           'hello error',
           'should reject with standard error, if no standard output',
+        );
+      });
+
+    subProcess
+      .execute('invalid-command-xyz-987', [])
+      .then(function () {
+        t.fail('should not have resolved');
+      })
+      .catch(function (err) {
+        t.ok(
+          err,
+          'should reject gracefully on spawning failure (command not found)',
         );
       });
   });

@@ -140,6 +140,11 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
   }
 }
 
+// Cache converted Sets using a WeakMap to avoid quadratic O(M * N) overhead
+// on recursive directory traversals. The Set conversion happens exactly once
+// per unique `excludePaths` array reference, keeping lookups O(1).
+const excludePathsSetCache = new WeakMap<string[], Set<string>>();
+
 export function isExcludedPath(
   resolvedPath: string,
   excludePaths: string[],
@@ -147,11 +152,21 @@ export function isExcludedPath(
   if (excludePaths.length === 0) {
     return false;
   }
-  if (process.platform === 'win32') {
-    const lowerPath = resolvedPath.toLowerCase();
-    return excludePaths.some((ep) => ep.toLowerCase() === lowerPath);
+
+  let set = excludePathsSetCache.get(excludePaths);
+  if (!set) {
+    if (process.platform === 'win32') {
+      set = new Set(excludePaths.map((ep) => ep.toLowerCase()));
+    } else {
+      set = new Set(excludePaths);
+    }
+    excludePathsSetCache.set(excludePaths, set);
   }
-  return excludePaths.includes(resolvedPath);
+
+  if (process.platform === 'win32') {
+    return set.has(resolvedPath.toLowerCase());
+  }
+  return set.has(resolvedPath);
 }
 
 function findFile(path: string, filter: string[] = []): string | null {
