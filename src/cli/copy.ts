@@ -1,11 +1,25 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
-const program = {
-  darwin: 'pbcopy',
-  linux: 'xclip -selection clipboard',
-  win32: 'clip',
-}[process.platform];
+interface CopyCommand {
+  cmd: string;
+  args: string[];
+}
 
+const commands: Record<string, CopyCommand> = {
+  darwin: { cmd: 'pbcopy', args: [] },
+  linux: { cmd: 'xclip', args: ['-selection', 'clipboard'] },
+  win32: { cmd: 'clip', args: [] },
+};
+
+/**
+ * Copies the given string to the system clipboard.
+ * Uses execFileSync with explicit binary and argument arrays to mitigate
+ * shell subshell spawning and OS command injection risks.
+ */
 export function copy(str: string) {
-  return execSync(program, { input: str });
+  const command = commands[process.platform];
+  if (!command) {
+    return;
+  }
+  return execFileSync(command.cmd, command.args, { input: str });
 }
