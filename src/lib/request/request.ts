@@ -21,6 +21,43 @@ const snykDebug = debugModule('snyk');
 
 declare const global: Global;
 
+const SENSITIVE_HEADERS = [
+  'authorization',
+  'x-api-key',
+  'session-token',
+  'cookie',
+  'set-cookie',
+];
+
+export function sanitizePayloadForLog(payload: Payload): Payload {
+  if (!payload || !payload.headers) {
+    return payload;
+  }
+  const sanitizedHeaders = { ...payload.headers };
+  for (const header of Object.keys(sanitizedHeaders)) {
+    if (SENSITIVE_HEADERS.includes(header.toLowerCase())) {
+      sanitizedHeaders[header] = '[REDACTED]';
+    }
+  }
+  return {
+    ...payload,
+    headers: sanitizedHeaders,
+  };
+}
+
+export function sanitizeUrlForLog(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.username || parsed.password) {
+      parsed.username = 'redacted';
+      parsed.password = 'redacted';
+    }
+    return parsed.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
 function setupRequest(payload: Payload) {
   // This ensures we support lowercase http(s)_proxy values as well
   // The weird IF around it ensures we don't create an envvar with a value of undefined, which throws error when trying to use it as a proxy
@@ -56,7 +93,7 @@ function setupRequest(payload: Payload) {
     // always compress going upstream
     data = zlib.gzipSync(json, { level: 9 });
 
-    snykDebug('sending request to:', payload.url);
+    snykDebug('sending request to:', sanitizeUrlForLog(payload.url));
     snykDebug('request body size:', json.length);
     snykDebug('gzipped request body size:', data.length);
 
@@ -88,7 +125,8 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(payload);
+    const sanitizedPayload = sanitizePayloadForLog(payload);
+    const payloadStr = jsonStringifyLargeObject(sanitizedPayload);
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
@@ -124,7 +162,7 @@ function setupRequest(payload: Payload) {
 
   const proxyUri = getProxyForUrl(url);
   if (proxyUri) {
-    snykDebug('using proxy:', proxyUri);
+    snykDebug('using proxy:', sanitizeUrlForLog(proxyUri));
     bootstrap({
       environmentVariableNamespace: '',
     });
