@@ -9,7 +9,15 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const SENSITIVE_KEYS = ['username', 'password', 'token', 'tfc-token'];
+const SENSITIVE_KEYS = [
+  'username',
+  'password',
+  'token',
+  'tfc-token',
+  'azurerm-account-key',
+  'fetch-tfstate-headers',
+  'api-key',
+];
 
 export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
