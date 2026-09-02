@@ -116,6 +116,24 @@ describe('Sanitize args', () => {
     expect(result[1].token).toEqual('token-set');
     expect(result[1]['tfc-token']).toEqual('tfc-token-set');
   });
+
+  it('should obfuscate azurerm-account-key, fetch-tfstate-headers, and api-key credentials', () => {
+    const argsWithExtendedCredentials: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      'azurerm-account-key': 'azure-key-secret',
+      'fetch-tfstate-headers': 'Authorization: Bearer secret',
+      'api-key': 'api-key-secret',
+    };
+
+    const result = obfuscateArgs(argsWithExtendedCredentials) as ArgsOptions;
+
+    expect(result['azurerm-account-key']).toEqual('azurerm-account-key-set');
+    expect(result['fetch-tfstate-headers']).toEqual(
+      'fetch-tfstate-headers-set',
+    );
+    expect(result['api-key']).toEqual('api-key-set');
+  });
 });
 
 describe('truncateForLog', () => {
