@@ -54,6 +54,49 @@ function dashToCamelCase(dash) {
     : dash.replace(/-[a-z]/g, (m) => m[1].toUpperCase());
 }
 
+// Static list of arguments to transform
+const argumentsToTransform: Array<
+  Partial<SupportedUserReachableFacingCliArgs>
+> = [
+  'package-manager',
+  'packages-folder',
+  'severity-threshold',
+  'strict-out-of-sync',
+  'all-sub-projects',
+  'sub-project',
+  'gradle-sub-project',
+  'skip-unresolved',
+  'scan-all-unmanaged',
+  'fail-on',
+  'all-projects',
+  'yarn-workspaces',
+  'maven-aggregate-project',
+  'maven-skip-wrapper',
+  'include-provenance',
+  'fingerprint-algorithm',
+  'detection-depth',
+  'exclude-paths',
+  'init-script',
+  'integration-name',
+  'integration-version',
+  'prune-repeated-subdependencies',
+  'dry-run',
+  'sequential',
+  'gradle-normalize-deps',
+];
+
+// Pre-computed map of dashed arg -> camelCased arg to avoid runtime regex execution in args loop
+const ARG_TRANSFORM_MAP: Record<string, string> = argumentsToTransform.reduce(
+  (acc, dashedArg) => {
+    const camelCased = dashToCamelCase(dashedArg);
+    if (camelCased !== dashedArg) {
+      acc[dashedArg] = camelCased;
+    }
+    return acc;
+  },
+  {} as Record<string, string>,
+);
+
 // Last item is ArgsOptions, the rest are strings (positional arguments, e.g. paths)
 export type MethodArgs = Array<string | ArgsOptions>;
 
@@ -198,44 +241,13 @@ export function args(rawArgv: string[]): Args {
     argv._.push(argv);
   }
 
-  // TODO: eventually all arguments should be transformed like this.
-  const argumentsToTransform: Array<
-    Partial<SupportedUserReachableFacingCliArgs>
-  > = [
-    'package-manager',
-    'packages-folder',
-    'severity-threshold',
-    'strict-out-of-sync',
-    'all-sub-projects',
-    'sub-project',
-    'gradle-sub-project',
-    'skip-unresolved',
-    'scan-all-unmanaged',
-    'fail-on',
-    'all-projects',
-    'yarn-workspaces',
-    'maven-aggregate-project',
-    'maven-skip-wrapper',
-    'include-provenance',
-    'fingerprint-algorithm',
-    'detection-depth',
-    'exclude-paths',
-    'init-script',
-    'integration-name',
-    'integration-version',
-    'prune-repeated-subdependencies',
-    'dry-run',
-    'sequential',
-    'gradle-normalize-deps',
-  ];
   for (const dashedArg of argumentsToTransform) {
     if (argv[dashedArg]) {
-      const camelCased = dashToCamelCase(dashedArg);
-      if (camelCased === dashedArg) {
-        continue;
+      const camelCased = ARG_TRANSFORM_MAP[dashedArg];
+      if (camelCased) {
+        argv[camelCased] = argv[dashedArg];
+        delete argv[dashedArg];
       }
-      argv[camelCased] = argv[dashedArg];
-      delete argv[dashedArg];
     }
   }
 
