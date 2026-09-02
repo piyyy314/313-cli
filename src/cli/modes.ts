@@ -53,6 +53,20 @@ export function parseMode(mode: string, args): string {
   return mode;
 }
 
+// Pre-compute command abbreviations per mode at module load to avoid dynamic allocations and repeated abbrev() calls
+const modeAliases: Record<string, Record<string, string>> = Object.keys(
+  modes,
+).reduce(
+  (acc, mode) => {
+    acc[mode] = abbrev(modes[mode].allowedCommands);
+    return acc;
+  },
+  {} as Record<string, Record<string, string>>,
+);
+
+// Pre-compiled regex for formatting list of allowed commands
+const LAST_COMMA_REGEX = /, ([^,]*)$/;
+
 export function modeValidation(args: object) {
   const mode = args['command'];
   const commands: Array<string> = args['options']._;
@@ -60,7 +74,7 @@ export function modeValidation(args: object) {
   if (isValidMode(mode) && commands.length <= 1) {
     const allowed = modes[mode].allowedCommands
       .join(', ')
-      .replace(/, ([^,]*)$/, ' or $1');
+      .replace(LAST_COMMA_REGEX, ' or $1');
     const message = `use snyk ${mode} with ${allowed}`;
 
     throw new CustomError(message);
@@ -87,13 +101,14 @@ export function displayModeHelp(mode: string, args) {
 }
 
 function isValidMode(mode: string): boolean {
-  return Object.keys(modes).includes(mode);
+  // O(1) lookup avoiding Object.keys array allocation on every call
+  return Object.prototype.hasOwnProperty.call(modes, mode);
 }
 
 function isValidCommand(mode: string, command: string): boolean {
-  const aliases = abbrev(modes[mode].allowedCommands);
-
-  return Object.keys(aliases).includes(command);
+  // O(1) lookup using pre-computed modeAliases avoiding dynamic abbrev() object allocations
+  const aliases = modeAliases[mode];
+  return !!aliases && Object.prototype.hasOwnProperty.call(aliases, command);
 }
 
 function configArgs(mode: string, args): [] {
