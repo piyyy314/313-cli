@@ -1,6 +1,6 @@
 import debugModule = require('debug');
 const debug = debugModule('snyk');
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export default function npm(
   method: string,
@@ -24,24 +24,26 @@ export default function npm(
     flags.push('--save');
   }
 
-  method += ' ' + flags.join(' ');
+  const methodArgs = method.split(' ').filter(Boolean);
+  const args = [...methodArgs, ...flags, ...(packages as string[])];
 
   return new Promise((resolve, reject) => {
-    const cmd = 'npm ' + method + ' ' + (packages as string[]).join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    debug('%s$ npm %s', cwd, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    execFile(
+      'npm',
+      args,
       {
         cwd,
+        shell: process.platform === 'win32',
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -55,7 +57,7 @@ export default function npm(
           return reject(e);
         }
 
-        debug('npm %s complete', method);
+        debug('npm %s complete', args.join(' '));
 
         resolve();
       },
@@ -65,10 +67,12 @@ export default function npm(
 
 export function getVersion() {
   return new Promise((resolve, reject) => {
-    exec(
-      'npm --version',
+    execFile(
+      'npm',
+      ['--version'],
       {
         cwd: process.cwd(),
+        shell: process.platform === 'win32',
       },
       (error, stdout) => {
         if (error) {
