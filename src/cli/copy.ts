@@ -1,11 +1,15 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
-const program = {
-  darwin: 'pbcopy',
-  linux: 'xclip -selection clipboard',
-  win32: 'clip',
-}[process.platform];
+const program: Record<string, { cmd: string; args: string[] }> = {
+  darwin: { cmd: 'pbcopy', args: [] },
+  linux: { cmd: 'xclip', args: ['-selection', 'clipboard'] },
+  win32: { cmd: 'clip', args: [] },
+};
 
-export function copy(str: string) {
-  return execSync(program, { input: str });
+export function copy(str: string): Buffer | string | void {
+  const config = program[process.platform];
+  if (!config) {
+    return;
+  }
+  return execFileSync(config.cmd, config.args, { input: str });
 }
