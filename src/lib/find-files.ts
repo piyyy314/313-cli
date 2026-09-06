@@ -10,6 +10,8 @@ import { SUPPORTED_MANIFEST_FILES } from './package-managers';
 
 const debug = debugModule('snyk:find-files');
 
+const EMPTY_SET: Set<string> = new Set<string>();
+
 // TODO: use util.promisify once we move to node 8
 
 /**
@@ -121,13 +123,18 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
         foundAll.push(fileFound);
       }
     }
-    const filteredOutFiles = foundAll.filter((f) => !found.includes(f));
-    if (filteredOutFiles.length) {
-      debug(
-        `Filtered out ${filteredOutFiles.length}/${
-          foundAll.length
-        } files: ${filteredOutFiles.join(', ')}`,
-      );
+    // Only calculate debug information if debug logging is enabled
+    // This avoids O(N*M) nested array lookups and string joins during standard CLI execution.
+    if (debug.enabled) {
+      const foundSet = new Set(found);
+      const filteredOutFiles = foundAll.filter((f) => !foundSet.has(f));
+      if (filteredOutFiles.length) {
+        debug(
+          `Filtered out ${filteredOutFiles.length}/${
+            foundAll.length
+          } files: ${filteredOutFiles.join(', ')}`,
+        );
+      }
     }
     return {
       files: filterForDefaultManifests(found, config.featureFlags),
@@ -215,7 +222,7 @@ async function findInDirectory(
 
 function filterForDefaultManifests(
   files: string[],
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_SET,
 ): string[] {
   const filteredFiles: string[] = [];
 
@@ -273,7 +280,7 @@ function filterForDefaultManifests(
 
 function detectProjectTypeFromFile(
   file: string,
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_SET,
 ): string | null {
   try {
     const packageManager = detectPackageManagerFromFile(file, featureFlags);
