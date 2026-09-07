@@ -9,28 +9,50 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const SENSITIVE_KEYS = [
+const SENSITIVE_KEYS = new Set([
   'username',
   'password',
   'token',
   'tfc-token',
+  'tfcToken',
   'azurerm-account-key',
+  'azurermAccountKey',
   'fetch-tfstate-headers',
+  'fetchTfstateHeaders',
   'api-key',
-];
+  'apiKey',
+  'client-secret',
+  'clientSecret',
+  'auth-token',
+  'authToken',
+  'oauth-token',
+  'oauthToken',
+  'session-token',
+  'sessionToken',
+  'secret',
+]);
+
+function obfuscateObject(obj: Record<string, any>): void {
+  for (const key of Object.keys(obj)) {
+    if (SENSITIVE_KEYS.has(key) && obj[key]) {
+      obj[key] = `${key}-set`;
+    }
+  }
+}
 
 export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
 
-  for (const key of SENSITIVE_KEYS) {
-    if (obfuscatedArgs[key]) {
-      obfuscatedArgs[key] = `${key}-set`;
+  if (Array.isArray(obfuscatedArgs)) {
+    for (const item of obfuscatedArgs) {
+      if (item && typeof item === 'object') {
+        obfuscateObject(item);
+      }
     }
-    if (obfuscatedArgs[1] && obfuscatedArgs[1][key]) {
-      obfuscatedArgs[1][key] = `${key}-set`;
-    }
+  } else if (obfuscatedArgs && typeof obfuscatedArgs === 'object') {
+    obfuscateObject(obfuscatedArgs);
   }
 
   return obfuscatedArgs;
