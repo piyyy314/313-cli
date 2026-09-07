@@ -134,6 +134,60 @@ describe('Sanitize args', () => {
     );
     expect(result['api-key']).toEqual('api-key-set');
   });
+
+  it('should obfuscate options object at index 0 in MethodArgs', () => {
+    const argsWithIndex0Options: MethodArgs = [
+      {
+        _doubleDashArgs: [],
+        _: [],
+        token: 'secret-token-123',
+        apiKey: 'secret-api-key',
+      },
+    ];
+
+    const result = obfuscateArgs(argsWithIndex0Options);
+
+    expect(result[0].token).toEqual('token-set');
+    expect(result[0].apiKey).toEqual('apiKey-set');
+  });
+
+  it('should obfuscate options object at index 2 or higher in MethodArgs', () => {
+    const argsWithIndex2Options: MethodArgs = [
+      'image:latest',
+      'Dockerfile',
+      {
+        _doubleDashArgs: [],
+        _: ['image:latest', 'Dockerfile'],
+        token: 'secret-token-123',
+        'client-secret': 'my-client-secret',
+      },
+    ];
+
+    const result = obfuscateArgs(argsWithIndex2Options);
+
+    expect(result[0]).toEqual('image:latest');
+    expect(result[1]).toEqual('Dockerfile');
+    expect(result[2].token).toEqual('token-set');
+    expect(result[2]['client-secret']).toEqual('client-secret-set');
+  });
+
+  it('should obfuscate camelCase sensitive keys', () => {
+    const argsWithCamelCaseKeys: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      tfcToken: 'tfc-secret',
+      apiKey: 'api-secret',
+      clientSecret: 'client-secret-val',
+      authToken: 'auth-token-val',
+    };
+
+    const result = obfuscateArgs(argsWithCamelCaseKeys) as ArgsOptions;
+
+    expect(result.tfcToken).toEqual('tfcToken-set');
+    expect(result.apiKey).toEqual('apiKey-set');
+    expect(result.clientSecret).toEqual('clientSecret-set');
+    expect(result.authToken).toEqual('authToken-set');
+  });
 });
 
 describe('truncateForLog', () => {
