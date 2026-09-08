@@ -1,6 +1,6 @@
 import debugModule = require('debug');
 const debug = debugModule('snyk');
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export default function npm(
   method: string,
@@ -15,7 +15,7 @@ export default function npm(
   }
 
   if (!Array.isArray(packages)) {
-    packages = [packages];
+    packages = [packages as unknown as string];
   }
 
   // only if we have packages, then always save, otherwise the command might
@@ -24,22 +24,24 @@ export default function npm(
     flags.push('--save');
   }
 
-  method += ' ' + flags.join(' ');
+  const methodArgs = method.trim().split(/\s+/).filter(Boolean);
+  const args = [...methodArgs, ...flags, ...(packages as string[])];
 
   return new Promise((resolve, reject) => {
-    const cmd = 'npm ' + method + ' ' + (packages as string[]).join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    debug('%s$ npm %s', cwd, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    // Use execFile with discrete argument arrays to mitigate OS command injection risks
+    execFile(
+      'npm',
+      args,
       {
         cwd,
       },
@@ -63,10 +65,11 @@ export default function npm(
   });
 }
 
-export function getVersion() {
+export function getVersion(): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(
-      'npm --version',
+    execFile(
+      'npm',
+      ['--version'],
       {
         cwd: process.cwd(),
       },
