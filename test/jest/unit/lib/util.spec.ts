@@ -134,6 +134,49 @@ describe('Sanitize args', () => {
     );
     expect(result['api-key']).toEqual('api-key-set');
   });
+
+  it('should obfuscate camelCase sensitive credential options', () => {
+    const argsWithCamelCaseCredentials: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      tfcToken: 'tfc-secret-123',
+      azurermAccountKey: 'azure-key-secret',
+      fetchTfstateHeaders: 'Authorization: Bearer secret',
+      apiKey: 'api-key-secret',
+      clientSecret: 'client-secret-123',
+    };
+
+    const result = obfuscateArgs(argsWithCamelCaseCredentials) as ArgsOptions;
+
+    expect(result.tfcToken).toEqual('tfcToken-set');
+    expect(result.azurermAccountKey).toEqual('azurermAccountKey-set');
+    expect(result.fetchTfstateHeaders).toEqual('fetchTfstateHeaders-set');
+    expect(result.apiKey).toEqual('apiKey-set');
+    expect(result.clientSecret).toEqual('clientSecret-set');
+  });
+
+  it('should obfuscate options objects at arbitrary array positions and deeply nested positions in MethodArgs', () => {
+    const argsAtPos2: unknown[] = [
+      'arg0',
+      'arg1',
+      {
+        _doubleDashArgs: [],
+        _: [],
+        apiKey: 'secret-key',
+        nested: {
+          clientSecret: 'nested-secret',
+        },
+      },
+    ];
+
+    const result = obfuscateArgs(argsAtPos2 as MethodArgs) as MethodArgs;
+
+    expect(result[0]).toEqual('arg0');
+    expect(result[1]).toEqual('arg1');
+    const opts = result[2] as Record<string, any>;
+    expect(opts.apiKey).toEqual('apiKey-set');
+    expect(opts.nested.clientSecret).toEqual('clientSecret-set');
+  });
 });
 
 describe('truncateForLog', () => {
