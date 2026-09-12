@@ -198,10 +198,33 @@ const generateScanFlags = async (
     args.push(createIgnorePattern(services));
   }
 
-  debug(args);
+  debug(sanitizeArgs(args));
 
   return args;
 };
+
+export function sanitizeArgs(args: string[]): string[] {
+  const sensitiveFlags = new Set(['--tfc-token', '--headers']);
+  const sanitized: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    const [flag] = arg.split('=');
+    if (sensitiveFlags.has(flag)) {
+      if (arg.includes('=')) {
+        sanitized.push(`${flag}=[REDACTED]`);
+      } else {
+        sanitized.push(arg);
+        if (i + 1 < args.length) {
+          sanitized.push('[REDACTED]');
+          i++;
+        }
+      }
+    } else {
+      sanitized.push(arg);
+    }
+  }
+  return sanitized;
+}
 
 export function translateExitCode(exitCode: number | null): number {
   switch (exitCode) {
@@ -236,7 +259,7 @@ export const runDriftCTL = async ({
     stdio = ['pipe', 'pipe', 'inherit'];
   }
 
-  debug('running driftctl %s ', args.join(' '));
+  debug('running driftctl %s ', sanitizeArgs(args).join(' '));
 
   const dctl_env: NodeJS.ProcessEnv = restoreEnvProxy({
     ...process.env,
