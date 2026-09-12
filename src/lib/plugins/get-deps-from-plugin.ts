@@ -218,8 +218,11 @@ export function warnSomeGradleManifestsNotScanned(
     })
     .filter(gradleTargetFilesFilter);
   const detectedGradleFiles = allFilesFound.filter(gradleTargetFilesFilter);
+  // Optimization: convert scannedGradleFiles to a Set to reduce difference lookup complexity
+  // from O(N * M) with array.includes to O(N + M) with Set.has.
+  const scannedGradleSet = new Set(scannedGradleFiles);
   const diff = detectedGradleFiles.filter(
-    (file) => !scannedGradleFiles.includes(file),
+    (file) => !scannedGradleSet.has(file),
   );
 
   if (diff.length > 0) {
