@@ -10,6 +10,16 @@ import { SUPPORTED_MANIFEST_FILES } from './package-managers';
 
 const debug = debugModule('snyk:find-files');
 
+// Shared empty Set to avoid dynamic Set allocations in default function parameters.
+const EMPTY_SET = new Set<string>();
+
+// Pre-computed set of Node lockfile names for O(1) lookups in chooseBestManifest.
+const NODE_LOCKFILES = new Set<string>([
+  SUPPORTED_MANIFEST_FILES.PACKAGE_LOCK_JSON as string,
+  SUPPORTED_MANIFEST_FILES.YARN_LOCK as string,
+  SUPPORTED_MANIFEST_FILES.PNPM_LOCK as string,
+]);
+
 // TODO: use util.promisify once we move to node 8
 
 /**
@@ -75,7 +85,7 @@ const defaultFindConfig: DefaultFindConfig = {
   excludePaths: [],
   filter: [],
   levelsDeep: 4,
-  featureFlags: new Set<string>(),
+  featureFlags: EMPTY_SET,
 };
 
 /**
@@ -121,13 +131,19 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
         foundAll.push(fileFound);
       }
     }
-    const filteredOutFiles = foundAll.filter((f) => !found.includes(f));
-    if (filteredOutFiles.length) {
-      debug(
-        `Filtered out ${filteredOutFiles.length}/${
-          foundAll.length
-        } files: ${filteredOutFiles.join(', ')}`,
-      );
+    // Performance optimization: debug log calculation involves O(N * M) filtering.
+    // Guard by `debug.enabled` to avoid calculating filtered files when debug logging is disabled,
+    // and use Set.has for O(1) membership checks when enabled.
+    if (debug.enabled) {
+      const foundSet = new Set(found);
+      const filteredOutFiles = foundAll.filter((f) => !foundSet.has(f));
+      if (filteredOutFiles.length) {
+        debug(
+          `Filtered out ${filteredOutFiles.length}/${
+            foundAll.length
+          } files: ${filteredOutFiles.join(', ')}`,
+        );
+      }
     }
     return {
       files: filterForDefaultManifests(found, config.featureFlags),
@@ -215,7 +231,7 @@ async function findInDirectory(
 
 function filterForDefaultManifests(
   files: string[],
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_SET,
 ): string[] {
   const filteredFiles: string[] = [];
 
@@ -273,7 +289,7 @@ function filterForDefaultManifests(
 
 function detectProjectTypeFromFile(
   file: string,
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_SET,
 ): string | null {
   try {
     const packageManager = detectPackageManagerFromFile(file, featureFlags);
@@ -291,7 +307,7 @@ function shouldSkipAddingFile(
   filePath: string,
   filteredFiles: string[],
 ): boolean {
-  if (['gradle'].includes(packageManager) && filePath) {
+  if (packageManager === 'gradle' && filePath) {
     const rootGradleFile = filteredFiles
       .filter(
         (targetFile) =>
@@ -312,83 +328,91 @@ function chooseBestManifest(
   files: Array<{ base: string; path: string }>,
   projectType: string,
 ): string | null {
+  // Performance optimization: use .find() to short-circuit array scanning on first match
+  // instead of filtering entire arrays and allocating intermediate array results.
   switch (projectType) {
     case 'node': {
-      const nodeLockfiles = [
-        SUPPORTED_MANIFEST_FILES.PACKAGE_LOCK_JSON as string,
-        SUPPORTED_MANIFEST_FILES.YARN_LOCK as string,
-        SUPPORTED_MANIFEST_FILES.PNPM_LOCK as string,
-      ];
-      const lockFile = files.filter((path) =>
-        nodeLockfiles.includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple node lockfiles files, defaulting to ${lockFile.path}`,
-      );
+      const lockFile = files.find((file) => NODE_LOCKFILES.has(file.base));
       if (lockFile) {
+        debug(
+          `Encountered multiple node lockfiles files, defaulting to ${lockFile.path}`,
+        );
         return lockFile.path;
       }
-      const packageJson = files.filter((path) =>
-        ['package.json'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple npm manifest files, defaulting to ${packageJson.path}`,
-      );
-      return packageJson.path;
+      const packageJson = files.find((file) => file.base === 'package.json');
+      if (packageJson) {
+        debug(
+          `Encountered multiple npm manifest files, defaulting to ${packageJson.path}`,
+        );
+        return packageJson.path;
+      }
+      return null;
     }
     case 'rubygems': {
-      const defaultManifest = files.filter((path) =>
-        ['Gemfile.lock'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple gem manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (file) => file.base === 'Gemfile.lock',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple gem manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'cocoapods': {
-      const defaultManifest = files.filter((path) =>
-        ['Podfile'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple cocoapods manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((file) => file.base === 'Podfile');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple cocoapods manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'pip': {
-      const defaultManifest = files.filter((path) =>
-        ['Pipfile'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple pip manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((file) => file.base === 'Pipfile');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple pip manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'gradle': {
-      const defaultManifest = files.filter((path) =>
-        ['build.gradle'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple gradle manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (file) => file.base === 'build.gradle',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple gradle manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'poetry': {
-      const defaultManifest = files.filter((path) =>
-        ['pyproject.toml'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple poetry manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (file) => file.base === 'pyproject.toml',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple poetry manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'hex': {
-      const defaultManifest = files.filter((path) =>
-        ['mix.exs'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple hex manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((file) => file.base === 'mix.exs');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple hex manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     default: {
       return null;
