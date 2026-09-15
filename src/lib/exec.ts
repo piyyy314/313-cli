@@ -1,12 +1,16 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
-// TODO: is this different to child process exec?
-export function executeCommand(cmd, root) {
+// Executes a command safely using execFile
+export function executeCommand(cmd: string, root: string): Promise<string> {
+  const parts = cmd.trim().split(/\s+/);
+  const file = parts[0];
+  const args = parts.slice(1);
+
   return new Promise((resolve, reject) => {
-    exec(cmd, { cwd: root }, (err, stdout, stderr) => {
-      const error = stderr.trim();
-      if (error) {
-        return reject(new Error(error + ' / ' + cmd));
+    execFile(file, args, { cwd: root }, (err, stdout, stderr) => {
+      const error = stderr ? stderr.trim() : '';
+      if (err || error) {
+        return reject(new Error((error || err?.message) + ' / ' + cmd));
       }
       resolve(stdout.split('\n').join(''));
     });

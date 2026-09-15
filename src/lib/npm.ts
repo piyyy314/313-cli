@@ -1,6 +1,6 @@
 import debugModule = require('debug');
 const debug = debugModule('snyk');
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export default function npm(
   method: string,
@@ -9,37 +9,35 @@ export default function npm(
   cwd: string | null,
   flags: string[] | null,
 ): Promise<void> {
-  flags = flags || [];
-  if (!packages) {
-    packages = [];
-  }
-
-  if (!Array.isArray(packages)) {
-    packages = [packages];
+  const flagsArray = flags ? [...flags] : [];
+  let pkgArray: string[] = [];
+  if (packages) {
+    pkgArray = Array.isArray(packages) ? packages : [packages];
   }
 
   // only if we have packages, then always save, otherwise the command might
   // be something like `npm shrinkwrap'
-  if (packages.length && !flags.length) {
-    flags.push('--save');
+  if (pkgArray.length && !flagsArray.length) {
+    flagsArray.push('--save');
   }
 
-  method += ' ' + flags.join(' ');
+  const args = [method, ...flagsArray, ...pkgArray];
 
   return new Promise((resolve, reject) => {
-    const cmd = 'npm ' + method + ' ' + (packages as string[]).join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    debug('%s$ %s %s', cwd, npmBin, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    execFile(
+      npmBin,
+      args,
       {
         cwd,
       },
@@ -48,7 +46,7 @@ export default function npm(
           return reject(error);
         }
 
-        if (stderr.indexOf('ERR!') !== -1) {
+        if (stderr && stderr.indexOf('ERR!') !== -1) {
           console.error(stderr.trim());
           const e = new Error('npm update issues: ' + stderr.trim());
           (e as any).code = 'FAIL_UPDATE';
@@ -63,10 +61,12 @@ export default function npm(
   });
 }
 
-export function getVersion() {
+export function getVersion(): Promise<string> {
   return new Promise((resolve, reject) => {
-    exec(
-      'npm --version',
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    execFile(
+      npmBin,
+      ['--version'],
       {
         cwd: process.cwd(),
       },
