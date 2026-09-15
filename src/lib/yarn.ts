@@ -1,5 +1,5 @@
 import * as Debug from 'debug';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { CustomError } from './errors';
 
 const debug = Debug('snyk');
@@ -11,31 +11,29 @@ export function yarn(
   cwd: string,
   flags: string[],
 ) {
-  flags = flags || [];
-  if (!packages) {
-    packages = [];
+  const flagsArray = flags ? [...flags] : [];
+  let pkgArray: string[] = [];
+  if (packages) {
+    pkgArray = Array.isArray(packages) ? packages : [packages];
   }
 
-  if (!Array.isArray(packages)) {
-    packages = [packages];
-  }
-
-  method += ' ' + flags.join(' ');
+  const args = [method, ...flagsArray, ...pkgArray];
 
   return new Promise<void>((resolve, reject) => {
-    const cmd = 'yarn ' + method + ' ' + packages.join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    const yarnBin = process.platform === 'win32' ? 'yarn.cmd' : 'yarn';
+    debug('%s$ %s %s', cwd, yarnBin, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    execFile(
+      yarnBin,
+      args,
       {
         cwd,
       },
@@ -44,7 +42,7 @@ export function yarn(
           return reject(error);
         }
 
-        if (stderr.indexOf('ERR!') !== -1) {
+        if (stderr && stderr.indexOf('ERR!') !== -1) {
           console.error(stderr.trim());
           const e = new CustomError('Yarn update issues: ' + stderr.trim());
           e.strCode = 'FAIL_UPDATE';
