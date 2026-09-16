@@ -17,6 +17,11 @@ const SENSITIVE_KEYS = [
   'azurerm-account-key',
   'fetch-tfstate-headers',
   'api-key',
+  'snykToken',
+  'snyk-token',
+  'oauthToken',
+  'oauth-token',
+  'auth',
 ];
 
 export function obfuscateArgs(

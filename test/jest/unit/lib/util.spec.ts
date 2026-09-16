@@ -134,6 +134,26 @@ describe('Sanitize args', () => {
     );
     expect(result['api-key']).toEqual('api-key-set');
   });
+
+  it('should obfuscate snykToken, snyk-token, oauthToken, oauth-token, and auth credentials', () => {
+    const argsWithAuthTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      snykToken: 'snyk-secret-123',
+      'snyk-token': 'snyk-secret-456',
+      oauthToken: 'oauth-secret-789',
+      'oauth-token': 'oauth-secret-abc',
+      auth: 'auth-header-xyz',
+    };
+
+    const result = obfuscateArgs(argsWithAuthTokens) as ArgsOptions;
+
+    expect(result.snykToken).toEqual('snykToken-set');
+    expect(result['snyk-token']).toEqual('snyk-token-set');
+    expect(result.oauthToken).toEqual('oauthToken-set');
+    expect(result['oauth-token']).toEqual('oauth-token-set');
+    expect(result.auth).toEqual('auth-set');
+  });
 });
 
 describe('truncateForLog', () => {
