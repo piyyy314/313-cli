@@ -1,6 +1,6 @@
 import debugModule = require('debug');
 const debug = debugModule('snyk');
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export default function npm(
   method: string,
@@ -24,22 +24,23 @@ export default function npm(
     flags.push('--save');
   }
 
-  method += ' ' + flags.join(' ');
+  const args = [method, ...flags, ...(packages as string[])];
 
   return new Promise((resolve, reject) => {
-    const cmd = 'npm ' + method + ' ' + (packages as string[]).join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    debug('%s$ npm %s', cwd, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    // Use execFile with explicit argument array to avoid shell command injection
+    execFile(
+      'npm',
+      args,
       {
         cwd,
       },
@@ -65,8 +66,9 @@ export default function npm(
 
 export function getVersion() {
   return new Promise((resolve, reject) => {
-    exec(
-      'npm --version',
+    execFile(
+      'npm',
+      ['--version'],
       {
         cwd: process.cwd(),
       },
