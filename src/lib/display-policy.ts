@@ -61,8 +61,11 @@ function displayRule(title: string): (rule: VulnRules, i: number) => string {
   };
 }
 
+// Pre-compiled regular expression for license vulnerability matching to eliminate repeated dynamic RegExp instantiations
+const SNYK_LIC_REGEX = /^snyk:lic/i;
+
 function apiRoot(vulnId: string) {
-  const match = new RegExp(/^snyk:lic/i).test(vulnId);
+  const match = SNYK_LIC_REGEX.test(vulnId);
   if (match) {
     return config.PUBLIC_LICENSE_URL;
   }
