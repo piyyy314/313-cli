@@ -13,12 +13,26 @@ export function hasFixes(testResults: any[]): boolean {
   return testResults.some(isFixable);
 }
 
+/**
+ * Fast O(1) check to determine if an object has enumerable keys without
+ * allocating a temporary string array via Object.keys().
+ */
+function hasKeys(obj: Record<string, unknown> | undefined | null): boolean {
+  if (!obj) {
+    return false;
+  }
+  for (const key in obj) {
+    return true;
+  }
+  return false;
+}
+
 export function isUpgradable(testResult: any): boolean {
   if (testResult.remediation) {
     const {
       remediation: { upgrade = {}, pin = {} },
     } = testResult;
-    return Object.keys(upgrade).length > 0 || Object.keys(pin).length > 0;
+    return hasKeys(upgrade) || hasKeys(pin);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
@@ -34,7 +48,7 @@ export function isPatchable(testResult: any): boolean {
     const {
       remediation: { patch = {} },
     } = testResult;
-    return Object.keys(patch).length > 0;
+    return hasKeys(patch);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
