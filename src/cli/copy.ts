@@ -1,11 +1,20 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 
-const program = {
-  darwin: 'pbcopy',
-  linux: 'xclip -selection clipboard',
-  win32: 'clip',
-}[process.platform];
+interface CommandConfig {
+  cmd: string;
+  args: string[];
+}
+
+const commands: Record<string, CommandConfig> = {
+  darwin: { cmd: 'pbcopy', args: [] },
+  linux: { cmd: 'xclip', args: ['-selection', 'clipboard'] },
+  win32: { cmd: 'clip', args: [] },
+};
 
 export function copy(str: string) {
-  return execSync(program, { input: str });
+  const config = commands[process.platform];
+  if (!config) {
+    throw new Error(`Clipboard copy is not supported on platform: ${process.platform}`);
+  }
+  return execFileSync(config.cmd, config.args, { input: str });
 }
