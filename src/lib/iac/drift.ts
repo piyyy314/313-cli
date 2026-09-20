@@ -97,31 +97,27 @@ export function processHTMLOutput(
   return stdout;
 }
 
+// Pre-compiled regular expressions for html rebranding to prevent repeated dynamic RegExp allocations per invocation
+const FAVICON_REPLACE_REGEX = /(<link rel="shortcut icon")(.*)(\/>)/g;
+const TITLE_REPLACE_REGEX = /(<title>)(.*)(<\/title>)/g;
+const LOGO_REPLACE_REGEX = /(<div id="brand_logo">)((.|\r|\n)*?)(<\/div>)/g;
+
 function rebrandHTMLOutput(data: string): string {
   // Replace favicon
-  const faviconReplaceRegex = new RegExp(
-    '(<link rel="shortcut icon")(.*)(\\/>)',
-    'g',
-  );
   data = data.replace(
-    faviconReplaceRegex,
+    FAVICON_REPLACE_REGEX,
     `<link rel="shortcut icon" type="image/x-icon" href="${snykFaviconBase64}" />`,
   );
 
   // Replace HTML title
-  const titleReplaceRegex = new RegExp('(<title>)(.*)(<\\/title>)', 'g');
   data = data.replace(
-    titleReplaceRegex,
+    TITLE_REPLACE_REGEX,
     `<title>Snyk IaC drift report</title>`,
   );
 
   // Replace header brand logo
-  const logoReplaceRegex = new RegExp(
-    '(<div id="brand_logo">)((.|\\r|\\n)*?)(<\\/div>)',
-    'g',
-  );
   data = data.replace(
-    logoReplaceRegex,
+    LOGO_REPLACE_REGEX,
     `<div id="brand_logo">${snykLogoSVG}</div>`,
   );
 
