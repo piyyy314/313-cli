@@ -3,6 +3,13 @@ import { TestOptions, Options } from '../../../lib/types';
 import { FAIL_ON, FailOn, SEVERITIES } from '../../../lib/snyk-test/common';
 import { FailOnError } from '../../../lib/errors/fail-on-error.ts';
 
+// Pre-compute module-level Sets for O(1) lookup.
+// Avoids allocating temporary arrays via SEVERITIES.map() and Object.keys() on every option validation.
+const VALID_SEVERITY_THRESHOLDS = new Set<string>(
+  SEVERITIES.map((s) => s.verboseName),
+);
+const VALID_FAIL_ON_VALUES = new Set<string>(Object.keys(FAIL_ON));
+
 export function validateTestOptions(options: TestOptions & Options) {
   if (
     options.severityThreshold &&
@@ -17,10 +24,10 @@ export function validateTestOptions(options: TestOptions & Options) {
   }
 }
 
-function validateSeverityThreshold(severityThreshold) {
-  return SEVERITIES.map((s) => s.verboseName).indexOf(severityThreshold) > -1;
+function validateSeverityThreshold(severityThreshold: string) {
+  return VALID_SEVERITY_THRESHOLDS.has(severityThreshold);
 }
 
 function validateFailOn(arg: FailOn) {
-  return Object.keys(FAIL_ON).includes(arg);
+  return VALID_FAIL_ON_VALUES.has(arg);
 }
