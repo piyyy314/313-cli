@@ -217,9 +217,11 @@ export function warnSomeGradleManifestsNotScanned(
       return targetFile ? pathLib.resolve(root, targetFile) : null;
     })
     .filter(gradleTargetFilesFilter);
+  // Convert array to Set for O(1) lookup instead of O(S * D) linear searches
+  const scannedGradleFilesSet = new Set(scannedGradleFiles);
   const detectedGradleFiles = allFilesFound.filter(gradleTargetFilesFilter);
   const diff = detectedGradleFiles.filter(
-    (file) => !scannedGradleFiles.includes(file),
+    (file) => !scannedGradleFilesSet.has(file),
   );
 
   if (diff.length > 0) {
