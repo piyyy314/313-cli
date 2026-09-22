@@ -106,16 +106,35 @@ const DETECTABLE_PACKAGE_MANAGERS: {
   [SUPPORTED_MANIFEST_FILES.UV_LOCK]: 'uv',
 };
 
+// Pre-index DETECTABLE_FILES by basename to allow O(1) candidate lookup in isPathToPackageFile.
+// Storing an array of candidate patterns per basename preserves support for multiple patterns
+// sharing the same basename (e.g., 'obj/project.assets.json' and 'project.assets.json') and feature flags.
+const DETECTABLE_FILES_BY_BASENAME: Map<string, string[]> = new Map();
+for (const filePattern of DETECTABLE_FILES) {
+  const base = pathLib.basename(filePattern);
+  const candidates = DETECTABLE_FILES_BY_BASENAME.get(base);
+  if (candidates) {
+    candidates.push(filePattern);
+  } else {
+    DETECTABLE_FILES_BY_BASENAME.set(base, [filePattern]);
+  }
+}
+
 export function isPathToPackageFile(
   path: string,
   featureFlags: Set<string> = new Set<string>(),
 ) {
-  for (const fileName of DETECTABLE_FILES) {
-    if (path.endsWith(fileName)) {
-      if (!isFileCompatible(fileName, featureFlags)) {
-        continue;
+  const basename = pathLib.basename(path);
+  const candidates = DETECTABLE_FILES_BY_BASENAME.get(basename);
+
+  if (candidates) {
+    for (const fileName of candidates) {
+      if (path.endsWith(fileName)) {
+        if (!isFileCompatible(fileName, featureFlags)) {
+          continue;
+        }
+        return true;
       }
-      return true;
     }
   }
   return false;
@@ -220,17 +239,12 @@ export function detectPackageManagerFromFile(
 ): SupportedPackageManagers {
   let key = pathLib.basename(file);
 
-  // TODO: fix this to use glob matching instead
-  // like *.gemspec
-  if (/\.gemspec$/.test(key)) {
+  // Optimize suffix matching using String.endsWith to avoid RegExp object instantiation/evaluation overhead
+  if (key.endsWith('.gemspec')) {
     key = '.gemspec';
-  }
-
-  if (/\.jar$/.test(key)) {
+  } else if (key.endsWith('.jar')) {
     key = '.jar';
-  }
-
-  if (/\.war$/.test(key)) {
+  } else if (key.endsWith('.war')) {
     key = '.war';
   }
 
