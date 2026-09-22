@@ -38,5 +38,12 @@ export const ciEnvs = new Set([
 ]);
 
 export function isCI(): boolean {
-  return Object.keys(process.env).some((key) => ciEnvs.has(key));
+  // Direct iteration over known CI environment variable names avoids creating an intermediate
+  // array of process.env keys via Object.keys(), avoids function callback allocations, and allows O(1) early exit.
+  for (const envVar of ciEnvs) {
+    if (process.env[envVar] !== undefined) {
+      return true;
+    }
+  }
+  return false;
 }
