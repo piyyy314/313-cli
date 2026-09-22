@@ -63,6 +63,20 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[1].username).toEqual('username-set');
     expect(resultWithFlag[1].password).toEqual('password-set');
   });
+
+  it('should obfuscate token and tfc-token when provided', () => {
+    const argsWithTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: ['iac', 'describe'],
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-456',
+    };
+
+    const resultWithFlag = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(resultWithFlag.token).toEqual('token-set');
+    expect(resultWithFlag['tfc-token']).toEqual('tfc-token-set');
+  });
 });
 
 describe('truncateForLog', () => {
