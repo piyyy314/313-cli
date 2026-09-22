@@ -1,8 +1,20 @@
 const fs = require('fs');
 
+let cachedIsDocker: boolean | null = null;
+
 export function isDocker(): boolean {
-  return hasDockerEnv() || hasDockerCGroup();
+  if (cachedIsDocker !== null) {
+    return cachedIsDocker;
+  }
+  const result = hasDockerEnv() || hasDockerCGroup();
+  cachedIsDocker = result;
+  return result;
 }
+
+export function resetIsDockerCache(): void {
+  cachedIsDocker = null;
+}
+
 function hasDockerEnv() {
   try {
     fs.statSync('/.dockerenv');

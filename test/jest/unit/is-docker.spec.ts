@@ -1,9 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { isDocker } from '../../../src/lib/is-docker';
+import { isDocker, resetIsDockerCache } from '../../../src/lib/is-docker';
 
 describe('isDocker', () => {
+  beforeEach(() => {
+    resetIsDockerCache();
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
