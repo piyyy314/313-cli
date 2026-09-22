@@ -9,10 +9,13 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
+  runCommand,
   validateHomebrew,
   validateScoopManifestFile,
 } from '../../../src/lib/analytics/sources';
+import * as childProcess from 'child_process';
 
 const emptyArgs = [];
 const defaultArgsParams = {
@@ -203,5 +206,52 @@ describe('getIntegrationEnvironmentVersion', () => {
         { integrationEnvironmentVersion: '7.0.0', ...defaultArgsParams },
       ]),
     ).toBe('7.0.0');
+  });
+});
+
+describe('isInstalled & runCommand', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('runCommand calls execFile with separate command and arguments', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file: any, args: any, callback: any) => {
+        callback(null, '/usr/bin/node', '');
+        return {} as any;
+      });
+
+    const result = await runCommand('which', ['node']);
+    expect(result).toBe('/usr/bin/node');
+    expect(execFileSpy).toHaveBeenCalledWith(
+      'which',
+      ['node'],
+      expect.any(Function),
+    );
+  });
+
+  it('isInstalled returns true when binary is found', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file: any, args: any, callback: any) => {
+        callback(null, '/usr/bin/git', '');
+        return {} as any;
+      });
+
+    const installed = await isInstalled('git');
+    expect(installed).toBe(true);
+  });
+
+  it('isInstalled returns false when binary is not found or error occurs', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file: any, args: any, callback: any) => {
+        callback(new Error('Command failed'), '', 'not found');
+        return {} as any;
+      });
+
+    const installed = await isInstalled('nonexistent_cmd');
+    expect(installed).toBe(false);
   });
 });
