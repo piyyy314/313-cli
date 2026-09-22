@@ -33,14 +33,13 @@ function textLength(str: string): number {
   return str.replace(/\u001b\[(?:\d{1,3})(?:;\d{1,3})*m/g, '').length;
 }
 
+// Pre-compile regex pattern at module level to avoid repeated allocations per function call.
+const HARD_RETURN_GFM_RE = /\r|\n|<br ?\/?>/;
+
 // Munge \n's and spaces in "text" so that the number of
 // characters between \n's is less than or equal to "width".
 export function reflowText(text: string, width: number): string {
-  const HARD_RETURN = '\r|\n';
-  const HARD_RETURN_GFM_RE = new RegExp(HARD_RETURN + '|<br ?/?>');
-
-  const splitRe = HARD_RETURN_GFM_RE;
-  const sections = text.split(splitRe);
+  const sections = text.split(HARD_RETURN_GFM_RE);
   const reflowed = [] as string[];
 
   sections.forEach((section) => {
@@ -52,11 +51,11 @@ export function reflowText(text: string, width: number): string {
     let currentLine = '';
     let lastWasEscapeChar = false;
 
-    while (fragments.length) {
-      const fragment = fragments[0];
+    // Use loop iteration instead of fragments.splice(0, 1) to avoid O(K^2) array shifting
+    for (let f = 0; f < fragments.length; f++) {
+      const fragment = fragments[f];
 
       if (fragment === '') {
-        fragments.splice(0, 1);
         lastWasEscapeChar = false;
         continue;
       }
@@ -65,7 +64,6 @@ export function reflowText(text: string, width: number): string {
       // move to the next fragment.
       if (!textLength(fragment)) {
         currentLine += fragment;
-        fragments.splice(0, 1);
         lastWasEscapeChar = true;
         continue;
       }
@@ -123,8 +121,6 @@ export function reflowText(text: string, width: number): string {
 
         lastWasEscapeChar = false;
       }
-
-      fragments.splice(0, 1);
     }
 
     if (textLength(currentLine)) reflowed.push(currentLine);
