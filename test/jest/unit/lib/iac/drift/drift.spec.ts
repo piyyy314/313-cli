@@ -23,6 +23,7 @@ import {
   DCTL_EXIT_CODES,
   driftctlVersion,
   generateArgs,
+  sanitizeArgs,
   translateExitCode,
 } from '../../../../../../src/lib/iac/drift/driftctl';
 import { getHumanReadableAnalysis } from '../../../../../../src/lib/iac/drift/output';
@@ -132,6 +133,28 @@ describe('driftctl integration', () => {
       EXIT_CODES.ERROR,
     );
     expect(translateExitCode(42)).toEqual(EXIT_CODES.ERROR);
+  });
+
+  it('sanitizeArgs redacts sensitive flags', () => {
+    const rawArgs = [
+      'scan',
+      '--headers',
+      'Authorization: Bearer secret-token',
+      '--tfc-token',
+      'sensitive-tfc-token-123',
+      '--to',
+      'aws+tf',
+    ];
+    const sanitized = sanitizeArgs(rawArgs);
+    expect(sanitized).toEqual([
+      'scan',
+      '--headers',
+      '[REDACTED]',
+      '--tfc-token',
+      '[REDACTED]',
+      '--to',
+      'aws+tf',
+    ]);
   });
 });
 
