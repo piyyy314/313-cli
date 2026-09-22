@@ -9,10 +9,12 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
 } from '../../../src/lib/analytics/sources';
+import * as childProcess from 'child_process';
 
 const emptyArgs = [];
 const defaultArgsParams = {
@@ -184,6 +186,47 @@ describe('getIntegrationEnvironment', () => {
         { integrationEnvironment: 'PhpStorm', ...defaultArgsParams },
       ]),
     ).toBe('PhpStorm');
+  });
+});
+
+describe('isInstalled', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns true when command is installed', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(null, '/usr/bin/node', '');
+        return {} as childProcess.ChildProcess;
+      });
+
+    const result = await isInstalled('node');
+    expect(result).toBe(true);
+    expect(execFileSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      ['node'],
+      expect.any(Function),
+    );
+  });
+
+  it('returns false when command is not installed or errors', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        const err = new Error('Command failed');
+        callback(err, '', 'not found');
+        return {} as childProcess.ChildProcess;
+      });
+
+    const result = await isInstalled('nonexistent_cmd');
+    expect(result).toBe(false);
+    expect(execFileSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      ['nonexistent_cmd'],
+      expect.any(Function),
+    );
   });
 });
 
