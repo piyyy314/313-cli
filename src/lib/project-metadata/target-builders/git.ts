@@ -28,12 +28,13 @@ export async function getInfo({
     ).trim();
 
     if (origin) {
-      const { protocol, host, pathname = '' } = url.parse(origin);
+      const { protocol, host, hostname, port, pathname = '' } = url.parse(origin);
 
       // Not handling git:// as it has no connection options
       if (host && protocol && ['ssh:', 'http:', 'https:'].includes(protocol)) {
-        // same format for parseable URLs
-        target.remoteUrl = `http://${host}${pathname}`;
+        // Exclude authentication credentials (user:password@) from remoteUrl
+        const cleanHost = hostname ? `${hostname}${port ? `:${port}` : ''}` : host;
+        target.remoteUrl = `http://${cleanHost}${pathname}`;
       } else {
         const originRes = originRegex.exec(origin);
         if (originRes && originRes[2] && originRes[3]) {
