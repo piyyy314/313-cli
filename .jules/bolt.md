@@ -1,0 +1,3 @@
+## 2025-09-22 - Direct Environment Variable Iteration in isCI
+**Learning:** Calling `Object.keys(process.env)` in heavily called utility functions like `isCI()` allocates an array of all environment variable keys (which can be 50-100+ strings) and creates per-key function allocations with `.some()`. Iterating over the static list of known CI environment variable names (`ciEnvs`) directly and checking `process.env[envVar] !== undefined` eliminates key array allocation and provides fast early exits.
+**Action:** Replace `Object.keys(process.env)` pattern checks with direct property lookups when matching against a known set of keys.
