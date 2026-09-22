@@ -9,10 +9,12 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
 } from '../../../src/lib/analytics/sources';
+import * as childProcess from 'child_process';
 
 const emptyArgs = [];
 const defaultArgsParams = {
@@ -203,5 +205,51 @@ describe('getIntegrationEnvironmentVersion', () => {
         { integrationEnvironmentVersion: '7.0.0', ...defaultArgsParams },
       ]),
     ).toBe('7.0.0');
+  });
+});
+
+describe('isInstalled', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('uses execFile with safe array arguments', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(null, '/usr/bin/git\n', '');
+        return {} as childProcess.ChildProcess;
+      });
+
+    const installed = await isInstalled('git');
+
+    expect(installed).toBe(true);
+    expect(execFileSpy).toHaveBeenCalledTimes(1);
+    const expectedWhich = process.platform === 'win32' ? 'where' : 'which';
+    expect(execFileSpy).toHaveBeenCalledWith(
+      expectedWhich,
+      ['git'],
+      expect.any(Function),
+    );
+  });
+
+  it('handles command injection attempts safely without executing shell operators', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(new Error('not found'), '', '');
+        return {} as childProcess.ChildProcess;
+      });
+
+    const installed = await isInstalled('git; echo vulnerable');
+
+    expect(installed).toBe(false);
+    expect(execFileSpy).toHaveBeenCalledTimes(1);
+    const expectedWhich = process.platform === 'win32' ? 'where' : 'which';
+    expect(execFileSpy).toHaveBeenCalledWith(
+      expectedWhich,
+      ['git; echo vulnerable'],
+      expect.any(Function),
+    );
   });
 });
