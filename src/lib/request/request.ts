@@ -21,6 +21,47 @@ const snykDebug = debugModule('snyk');
 
 declare const global: Global;
 
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'x-api-key',
+  'session-token',
+  'cookie',
+  'set-cookie',
+]);
+
+export function sanitizeUrlForLog(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.username || parsed.password) {
+      parsed.username = 'redacted';
+      parsed.password = 'redacted';
+    }
+    return parsed.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
+export function sanitizePayloadForLog(payload: Payload): Payload {
+  if (!payload) return payload;
+  const sanitized = { ...payload };
+  if (sanitized.url) {
+    sanitized.url = sanitizeUrlForLog(sanitized.url);
+  }
+  if (sanitized.headers) {
+    const headersCopy: Record<string, any> = {};
+    for (const key of Object.keys(sanitized.headers)) {
+      if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
+        headersCopy[key] = '[REDACTED]';
+      } else {
+        headersCopy[key] = sanitized.headers[key];
+      }
+    }
+    sanitized.headers = headersCopy;
+  }
+  return sanitized;
+}
+
 function setupRequest(payload: Payload) {
   // This ensures we support lowercase http(s)_proxy values as well
   // The weird IF around it ensures we don't create an envvar with a value of undefined, which throws error when trying to use it as a proxy
@@ -88,7 +129,8 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(payload);
+    const sanitizedPayload = sanitizePayloadForLog(payload);
+    const payloadStr = jsonStringifyLargeObject(sanitizedPayload);
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
@@ -124,7 +166,7 @@ function setupRequest(payload: Payload) {
 
   const proxyUri = getProxyForUrl(url);
   if (proxyUri) {
-    snykDebug('using proxy:', proxyUri);
+    snykDebug('using proxy:', sanitizeUrlForLog(proxyUri));
     bootstrap({
       environmentVariableNamespace: '',
     });
