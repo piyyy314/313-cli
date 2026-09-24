@@ -1,3 +1,12 @@
+// Helper function to check if an object has any enumerable properties in O(1) time
+// without allocating temporary key arrays via Object.keys()
+function hasKeys(obj: Record<string, unknown>): boolean {
+  for (const key in obj) {
+    return true;
+  }
+  return false;
+}
+
 // check if vuln was published in the last month
 export function isNewVuln(vuln) {
   const MONTH = 30 * 24 * 60 * 60 * 1000;
@@ -18,7 +27,8 @@ export function isUpgradable(testResult: any): boolean {
     const {
       remediation: { upgrade = {}, pin = {} },
     } = testResult;
-    return Object.keys(upgrade).length > 0 || Object.keys(pin).length > 0;
+    // Bolt Optimization: Use O(1) hasKeys check to avoid allocating key arrays with Object.keys()
+    return hasKeys(upgrade) || hasKeys(pin);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
@@ -34,7 +44,8 @@ export function isPatchable(testResult: any): boolean {
     const {
       remediation: { patch = {} },
     } = testResult;
-    return Object.keys(patch).length > 0;
+    // Bolt Optimization: Use O(1) hasKeys check to avoid allocating key arrays with Object.keys()
+    return hasKeys(patch);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
