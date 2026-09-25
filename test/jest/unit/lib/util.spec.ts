@@ -63,6 +63,50 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[1].username).toEqual('username-set');
     expect(resultWithFlag[1].password).toEqual('password-set');
   });
+
+  it('should obfuscate all sensitive credentials and tokens in args', () => {
+    const argsWithTokens = {
+      _doubleDashArgs: [],
+      _: ['test'],
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-456',
+      'azurerm-account-key': 'azure-key-789',
+      'fetch-tfstate-headers': 'Header: Secret',
+      'api-key': 'api-key-abc',
+      snykToken: 'snyk-token-xyz',
+      'snyk-token': 'snyk-token-123',
+      oauthToken: 'oauth-token-456',
+      'oauth-token': 'oauth-token-789',
+      auth: 'Bearer secret-jwt',
+    };
+
+    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(result.token).toEqual('token-set');
+    expect(result['tfc-token']).toEqual('tfc-token-set');
+    expect(result['azurerm-account-key']).toEqual('azurerm-account-key-set');
+    expect(result['fetch-tfstate-headers']).toEqual('fetch-tfstate-headers-set');
+    expect(result['api-key']).toEqual('api-key-set');
+    expect(result.snykToken).toEqual('snykToken-set');
+    expect(result['snyk-token']).toEqual('snyk-token-set');
+    expect(result.oauthToken).toEqual('oauthToken-set');
+    expect(result['oauth-token']).toEqual('oauth-token-set');
+    expect(result.auth).toEqual('auth-set');
+  });
+
+  it('should handle cyclic references gracefully without infinite loops', () => {
+    const cyclicArgs: any = {
+      _doubleDashArgs: [],
+      _: ['test'],
+      token: 'secret-token-123',
+    };
+    cyclicArgs.self = cyclicArgs;
+
+    const result = obfuscateArgs(cyclicArgs) as any;
+
+    expect(result.token).toEqual('token-set');
+    expect(result.self.token).toEqual('token-set');
+  });
 });
 
 describe('truncateForLog', () => {

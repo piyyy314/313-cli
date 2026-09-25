@@ -9,24 +9,43 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
+const SENSITIVE_KEYS = new Set([
+  'username',
+  'password',
+  'token',
+  'tfc-token',
+  'azurerm-account-key',
+  'fetch-tfstate-headers',
+  'api-key',
+  'snykToken',
+  'snyk-token',
+  'oauthToken',
+  'oauth-token',
+  'auth',
+]);
+
+function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
+  if (!obj || typeof obj !== 'object' || visited.has(obj)) {
+    return;
+  }
+  visited.add(obj);
+
+  for (const key of Object.keys(obj)) {
+    if (SENSITIVE_KEYS.has(key)) {
+      if (obj[key] !== undefined && obj[key] !== null) {
+        obj[key] = `${key}-set`;
+      }
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      recursiveObfuscate(obj[key], visited);
+    }
+  }
+}
+
 export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
-  if (obfuscatedArgs['username']) {
-    obfuscatedArgs['username'] = 'username-set';
-  }
-  if (obfuscatedArgs[1] && obfuscatedArgs[1]['username']) {
-    obfuscatedArgs[1]['username'] = 'username-set';
-  }
-
-  if (obfuscatedArgs['password']) {
-    obfuscatedArgs['password'] = 'password-set';
-  }
-  if (obfuscatedArgs[1] && obfuscatedArgs[1]['password']) {
-    obfuscatedArgs[1]['password'] = 'password-set';
-  }
-
+  recursiveObfuscate(obfuscatedArgs);
   return obfuscatedArgs;
 }
 
