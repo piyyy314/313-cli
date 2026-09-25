@@ -1,12 +1,45 @@
 const mockNeedleRequest = jest.fn();
 
-import { makeRequest } from '../../../../../src/lib/request/request';
+import {
+  makeRequest,
+  sanitizePayloadForLog,
+  sanitizeUrlForLog,
+} from '../../../../../src/lib/request/request';
 import { Payload } from '../../../../../src/lib/request/types';
 
 jest.mock('needle', () => {
   return {
     request: mockNeedleRequest,
   };
+});
+
+describe('request logging sanitization', () => {
+  it('sanitizes credentials in URLs', () => {
+    expect(sanitizeUrlForLog('http://user:pass@proxy.example.com:8080')).toBe(
+      'http://redacted:redacted@proxy.example.com:8080/',
+    );
+    expect(sanitizeUrlForLog('https://example.com/api/v1')).toBe(
+      'https://example.com/api/v1',
+    );
+  });
+
+  it('redacts sensitive headers in payload', () => {
+    const payload: Payload = {
+      method: 'get',
+      body: null,
+      url: 'https://example.com',
+      headers: {
+        authorization: 'token 12345',
+        'X-Api-Key': 'secret-key',
+        'content-type': 'application/json',
+      },
+    };
+    const sanitized = sanitizePayloadForLog(payload);
+    expect(sanitized.headers?.authorization).toBe('[REDACTED]');
+    expect(sanitized.headers?.['X-Api-Key']).toBe('[REDACTED]');
+    expect(sanitized.headers?.['content-type']).toBe('application/json');
+    expect(payload.headers?.authorization).toBe('token 12345');
+  });
 });
 
 describe('needle header auth failed', () => {
