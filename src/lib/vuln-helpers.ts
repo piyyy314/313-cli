@@ -13,12 +13,24 @@ export function hasFixes(testResults: any[]): boolean {
   return testResults.some(isFixable);
 }
 
+function hasKeys(obj: Record<string, any> | undefined): boolean {
+  if (!obj) {
+    return false;
+  }
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isUpgradable(testResult: any): boolean {
   if (testResult.remediation) {
     const {
       remediation: { upgrade = {}, pin = {} },
     } = testResult;
-    return Object.keys(upgrade).length > 0 || Object.keys(pin).length > 0;
+    return hasKeys(upgrade) || hasKeys(pin);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
@@ -34,7 +46,7 @@ export function isPatchable(testResult: any): boolean {
     const {
       remediation: { patch = {} },
     } = testResult;
-    return Object.keys(patch).length > 0;
+    return hasKeys(patch);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
