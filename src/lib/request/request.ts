@@ -21,6 +21,40 @@ const snykDebug = debugModule('snyk');
 
 declare const global: Global;
 
+export function sanitizePayloadForLog(payload: Payload): Payload {
+  if (!payload) return payload;
+  const sanitized = { ...payload };
+  if (sanitized.headers) {
+    const headers: Record<string, any> = { ...sanitized.headers };
+    for (const key of Object.keys(headers)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        lowerKey.includes('auth') ||
+        lowerKey.includes('key') ||
+        lowerKey.includes('token') ||
+        lowerKey.includes('cookie')
+      ) {
+        headers[key] = '[REDACTED]';
+      }
+    }
+    sanitized.headers = headers;
+  }
+  return sanitized;
+}
+
+export function sanitizeUrlForLog(urlStr: string): string {
+  try {
+    const parsed = new URL(urlStr);
+    if (parsed.username || parsed.password) {
+      parsed.username = 'REDACTED';
+      parsed.password = 'REDACTED';
+    }
+    return parsed.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
 function setupRequest(payload: Payload) {
   // This ensures we support lowercase http(s)_proxy values as well
   // The weird IF around it ensures we don't create an envvar with a value of undefined, which throws error when trying to use it as a proxy
@@ -88,7 +122,9 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(payload);
+    const payloadStr = jsonStringifyLargeObject(
+      sanitizePayloadForLog(payload),
+    );
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
@@ -124,7 +160,7 @@ function setupRequest(payload: Payload) {
 
   const proxyUri = getProxyForUrl(url);
   if (proxyUri) {
-    snykDebug('using proxy:', proxyUri);
+    snykDebug('using proxy:', sanitizeUrlForLog(proxyUri));
     bootstrap({
       environmentVariableNamespace: '',
     });
