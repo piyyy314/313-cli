@@ -76,7 +76,7 @@ test('sub-process.execute executes sub processes', function (t) {
   });
 
   t.test('error during execution', function (t) {
-    t.plan(2);
+    t.plan(3);
 
     subProcess
       .execute(script('stdout-echo-fail'), ['hello world'])
@@ -98,6 +98,15 @@ test('sub-process.execute executes sub processes', function (t) {
           'hello error',
           'should reject with standard error, if no standard output',
         );
+      });
+
+    subProcess
+      .execute('non_existent_command_snyk_test_12345', [])
+      .then(function () {
+        t.fail('should not have resolved');
+      })
+      .catch(function (err) {
+        t.ok(err, 'should reject with process error on non-existent command');
       });
   });
 
