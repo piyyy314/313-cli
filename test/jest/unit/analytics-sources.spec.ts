@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as childProcess from 'child_process';
 import {
   getIntegrationEnvironment,
   getIntegrationEnvironmentVersion,
@@ -9,6 +10,7 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
@@ -184,6 +186,41 @@ describe('getIntegrationEnvironment', () => {
         { integrationEnvironment: 'PhpStorm', ...defaultArgsParams },
       ]),
     ).toBe('PhpStorm');
+  });
+});
+
+describe('isInstalled', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns true when execFile succeeds', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(null, '/usr/bin/git', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('git');
+    expect(result).toBe(true);
+    expect(childProcess.execFile).toHaveBeenCalledWith(
+      expect.any(String),
+      ['git'],
+      expect.any(Function),
+    );
+  });
+
+  it('returns false when execFile errors', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(new Error('not found'), '', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('nonexistent');
+    expect(result).toBe(false);
   });
 });
 
