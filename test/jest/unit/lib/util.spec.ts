@@ -85,7 +85,9 @@ describe('Sanitize args', () => {
     expect(result.token).toEqual('token-set');
     expect(result['tfc-token']).toEqual('tfc-token-set');
     expect(result['azurerm-account-key']).toEqual('azurerm-account-key-set');
-    expect(result['fetch-tfstate-headers']).toEqual('fetch-tfstate-headers-set');
+    expect(result['fetch-tfstate-headers']).toEqual(
+      'fetch-tfstate-headers-set',
+    );
     expect(result['api-key']).toEqual('api-key-set');
     expect(result.snykToken).toEqual('snykToken-set');
     expect(result['snyk-token']).toEqual('snyk-token-set');
