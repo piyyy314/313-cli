@@ -1,0 +1,4 @@
+## 2025-03-01 - Command Injection Risk via Spawn with Shell Option
+**Vulnerability:** Node's `child_process.spawn()` was configured with `{ shell: true }` by default in the core `sub-process` helper. This allowed potential arbitrary shell command execution if any arguments passed to the helper contained shell metacharacters (such as `;`, `&`, `|`, `$()`, or backticks).
+**Learning:** Hardcoding `shell: true` in subprocess execution helpers is a highly dangerous practice because Node.js does not escape arguments passed to the shell on non-Windows platforms. This can be exploited if an attacker constructs input (such as a malicious git remote URL, branch name, or manifest contents) that gets evaluated by the helper.
+**Prevention:** Avoid `shell: true` unless strictly necessary (e.g., executing `.bat` files on Windows). Always default `shell` to `false` and spawn executables directly. If shell execution is required, ensure all arguments are rigorously sanitized.
