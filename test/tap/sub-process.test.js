@@ -49,7 +49,7 @@ test('sub-process.execute executes sub processes', function (t) {
       t.plan(1);
 
       subProcess
-        .execute('echo', [shellVar])
+        .execute('echo', [shellVar], { shell: true })
         .then(function (result) {
           t.not(result.trim(), shellVar, 'evaluates shell variable');
         })
