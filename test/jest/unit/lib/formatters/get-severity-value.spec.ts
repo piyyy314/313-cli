@@ -14,4 +14,10 @@ describe('getSeverityValue', () => {
   it('Low returns 4', () => {
     expect(getSeverityValue(SEVERITY.LOW)).toEqual(1);
   });
+  it('None returns 0', () => {
+    expect(getSeverityValue('none')).toEqual(0);
+  });
+  it('Unknown severity returns 0', () => {
+    expect(getSeverityValue('unknown' as any)).toEqual(0);
+  });
 });
