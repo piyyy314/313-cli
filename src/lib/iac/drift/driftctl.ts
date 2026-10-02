@@ -71,6 +71,19 @@ const driftctlDefaultOptions = ['--no-version-check'];
 
 let isBinaryDownloaded = false;
 
+export function sanitizeArgs(args: string[]): string[] {
+  const sanitized = [...args];
+  for (let i = 0; i < sanitized.length; i++) {
+    if (
+      (sanitized[i] === '--headers' || sanitized[i] === '--tfc-token') &&
+      i + 1 < sanitized.length
+    ) {
+      sanitized[i + 1] = '[REDACTED]';
+    }
+  }
+  return sanitized;
+}
+
 export const generateArgs = async (
   options: DriftCTLOptions,
   driftIgnore?: string[],
@@ -198,7 +211,7 @@ const generateScanFlags = async (
     args.push(createIgnorePattern(services));
   }
 
-  debug(args);
+  debug(sanitizeArgs(args));
 
   return args;
 };
@@ -236,7 +249,7 @@ export const runDriftCTL = async ({
     stdio = ['pipe', 'pipe', 'inherit'];
   }
 
-  debug('running driftctl %s ', args.join(' '));
+  debug('running driftctl %s ', sanitizeArgs(args).join(' '));
 
   const dctl_env: NodeJS.ProcessEnv = restoreEnvProxy({
     ...process.env,
