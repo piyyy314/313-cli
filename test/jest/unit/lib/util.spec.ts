@@ -85,7 +85,9 @@ describe('Sanitize args', () => {
     expect(result.token).toEqual('token-set');
     expect(result['tfc-token']).toEqual('tfc-token-set');
     expect(result['azurerm-account-key']).toEqual('azurerm-account-key-set');
-    expect(result['fetch-tfstate-headers']).toEqual('fetch-tfstate-headers-set');
+    expect(result['fetch-tfstate-headers']).toEqual(
+      'fetch-tfstate-headers-set',
+    );
     expect(result['api-key']).toEqual('api-key-set');
     expect(result.snykToken).toEqual('snykToken-set');
     expect(result['snyk-token']).toEqual('snyk-token-set');
@@ -106,6 +108,32 @@ describe('Sanitize args', () => {
 
     expect(result.token).toEqual('token-set');
     expect(result.self.token).toEqual('token-set');
+  });
+
+  it('should obfuscate sensitive keys with alternative casing or separators', () => {
+    const argsWithVariedCasing = {
+      _doubleDashArgs: [],
+      _: ['test'],
+      API_KEY: 'secret-api-key',
+      snyk_token: 'secret-snyk-token',
+      client_secret: 'secret-client-secret',
+      clientSecret: 'secret-client-secret-camel',
+      access_token: 'secret-access-token',
+      refreshToken: 'secret-refresh-token',
+      Authorization: 'Bearer secret-bearer-token',
+      SECRET: 'top-secret-val',
+    };
+
+    const result = obfuscateArgs(argsWithVariedCasing) as any;
+
+    expect(result.API_KEY).toEqual('API_KEY-set');
+    expect(result.snyk_token).toEqual('snyk_token-set');
+    expect(result.client_secret).toEqual('client_secret-set');
+    expect(result.clientSecret).toEqual('clientSecret-set');
+    expect(result.access_token).toEqual('access_token-set');
+    expect(result.refreshToken).toEqual('refreshToken-set');
+    expect(result.Authorization).toEqual('Authorization-set');
+    expect(result.SECRET).toEqual('SECRET-set');
   });
 });
 
