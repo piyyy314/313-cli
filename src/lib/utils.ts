@@ -13,15 +13,18 @@ const SENSITIVE_KEYS = new Set([
   'username',
   'password',
   'token',
-  'tfc-token',
-  'azurerm-account-key',
-  'fetch-tfstate-headers',
-  'api-key',
-  'snykToken',
-  'snyk-token',
-  'oauthToken',
-  'oauth-token',
+  'tfctoken',
+  'azurermaccountkey',
+  'fetchtfstateheaders',
+  'apikey',
+  'snyktoken',
+  'oauthtoken',
   'auth',
+  'authorization',
+  'clientsecret',
+  'secret',
+  'accesstoken',
+  'refreshtoken',
 ]);
 
 function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
@@ -31,7 +34,8 @@ function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
   visited.add(obj);
 
   for (const key of Object.keys(obj)) {
-    if (SENSITIVE_KEYS.has(key)) {
+    const normalizedKey = key.toLowerCase().replace(/[-_]/g, '');
+    if (SENSITIVE_KEYS.has(normalizedKey)) {
       if (obj[key] !== undefined && obj[key] !== null) {
         obj[key] = `${key}-set`;
       }
