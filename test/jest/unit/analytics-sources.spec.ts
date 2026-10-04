@@ -1,3 +1,4 @@
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import {
   getIntegrationEnvironment,
@@ -9,6 +10,7 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
@@ -203,5 +205,40 @@ describe('getIntegrationEnvironmentVersion', () => {
         { integrationEnvironmentVersion: '7.0.0', ...defaultArgsParams },
       ]),
     ).toBe('7.0.0');
+  });
+});
+
+describe('isInstalled', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('returns true when command is found using execFile with discrete arguments', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(null, '/usr/bin/git', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('git');
+    expect(result).toBe(true);
+    expect(execFileSpy).toHaveBeenCalledWith(
+      process.platform === 'win32' ? 'where' : 'which',
+      ['git'],
+      expect.any(Function),
+    );
+  });
+
+  it('returns false when command is not found or fails', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(new Error('not found'), '', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('nonexistent-binary');
+    expect(result).toBe(false);
   });
 });
