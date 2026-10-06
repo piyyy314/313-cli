@@ -64,34 +64,56 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[1].password).toEqual('password-set');
   });
 
-  it('should obfuscate all sensitive credentials and tokens in args', () => {
+  it('should obfuscate all sensitive credentials and tokens in args regardless of casing and delimiters', () => {
     const argsWithTokens = {
       _doubleDashArgs: [],
       _: ['test'],
       token: 'secret-token-123',
       'tfc-token': 'tfc-secret-456',
+      tfc_token: 'tfc-secret-789',
       'azurerm-account-key': 'azure-key-789',
+      azureRmAccountKey: 'azure-key-abc',
       'fetch-tfstate-headers': 'Header: Secret',
       'api-key': 'api-key-abc',
+      apiKey: 'api-key-def',
+      api_key: 'api-key-ghi',
+      API_KEY: 'api-key-jkl',
       snykToken: 'snyk-token-xyz',
       'snyk-token': 'snyk-token-123',
       oauthToken: 'oauth-token-456',
       'oauth-token': 'oauth-token-789',
       auth: 'Bearer secret-jwt',
+      authorization: 'Bearer secret-auth-jwt',
+      clientSecret: 'my-client-secret',
+      client_secret: 'my-client-secret-2',
+      secret: 'my-app-secret',
+      accessToken: 'access-token-123',
+      refreshToken: 'refresh-token-456',
     };
 
-    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+    const result = obfuscateArgs(argsWithTokens) as any;
 
     expect(result.token).toEqual('token-set');
     expect(result['tfc-token']).toEqual('tfc-token-set');
+    expect(result.tfc_token).toEqual('tfc_token-set');
     expect(result['azurerm-account-key']).toEqual('azurerm-account-key-set');
+    expect(result.azureRmAccountKey).toEqual('azureRmAccountKey-set');
     expect(result['fetch-tfstate-headers']).toEqual('fetch-tfstate-headers-set');
     expect(result['api-key']).toEqual('api-key-set');
+    expect(result.apiKey).toEqual('apiKey-set');
+    expect(result.api_key).toEqual('api_key-set');
+    expect(result.API_KEY).toEqual('API_KEY-set');
     expect(result.snykToken).toEqual('snykToken-set');
     expect(result['snyk-token']).toEqual('snyk-token-set');
     expect(result.oauthToken).toEqual('oauthToken-set');
     expect(result['oauth-token']).toEqual('oauth-token-set');
     expect(result.auth).toEqual('auth-set');
+    expect(result.authorization).toEqual('authorization-set');
+    expect(result.clientSecret).toEqual('clientSecret-set');
+    expect(result.client_secret).toEqual('client_secret-set');
+    expect(result.secret).toEqual('secret-set');
+    expect(result.accessToken).toEqual('accessToken-set');
+    expect(result.refreshToken).toEqual('refreshToken-set');
   });
 
   it('should handle cyclic references gracefully without infinite loops', () => {
