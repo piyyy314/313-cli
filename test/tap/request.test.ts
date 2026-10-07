@@ -445,9 +445,9 @@ test('request rejects if needle fails', (t) => {
     });
 });
 
-test('sanitizePayloadForLog redacts sensitive headers', (t) => {
+test('sanitizePayloadForLog redacts sensitive headers and URL credentials', (t) => {
   const payload = {
-    url: 'https://api.snyk.io',
+    url: 'https://admin:secretpass@api.snyk.io/v1?token=secret123',
     headers: {
       authorization: 'token secret123',
       'x-api-key': 'key456',
@@ -462,6 +462,9 @@ test('sanitizePayloadForLog redacts sensitive headers', (t) => {
   t.equal(sanitized.headers['session-token'], '[REDACTED]');
   t.equal(sanitized.headers.cookie, '[REDACTED]');
   t.equal(sanitized.headers['content-type'], 'application/json');
+  t.ok(!sanitized.url.includes('admin'));
+  t.ok(!sanitized.url.includes('secretpass'));
+  t.ok(!sanitized.url.includes('secret123'));
   t.equal(
     payload.headers.authorization,
     'token secret123',
@@ -470,11 +473,15 @@ test('sanitizePayloadForLog redacts sensitive headers', (t) => {
   t.end();
 });
 
-test('sanitizeUrlForLog redacts credentials in URLs', (t) => {
-  const urlWithCreds = 'http://admin:secretpass@proxy.example.com:8080/path';
+test('sanitizeUrlForLog redacts credentials and sensitive query parameters in URLs', (t) => {
+  const urlWithCreds =
+    'http://admin:secretpass@proxy.example.com:8080/path?token=xyz123&api_key=456&foo=bar';
   const sanitized = request.sanitizeUrlForLog(urlWithCreds);
   t.ok(!sanitized.includes('admin'));
   t.ok(!sanitized.includes('secretpass'));
+  t.ok(!sanitized.includes('xyz123'));
+  t.ok(!sanitized.includes('456'));
+  t.ok(sanitized.includes('foo=bar'));
   t.ok(sanitized.includes('REDACTED'));
 
   const safeUrl = 'https://api.snyk.io/v1';
