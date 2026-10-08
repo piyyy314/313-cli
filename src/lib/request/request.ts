@@ -24,6 +24,9 @@ declare const global: Global;
 export function sanitizePayloadForLog(payload: Payload): Payload {
   if (!payload) return payload;
   const sanitized = { ...payload };
+  if (sanitized.url) {
+    sanitized.url = sanitizeUrlForLog(sanitized.url);
+  }
   if (sanitized.headers) {
     const headers: Record<string, any> = { ...sanitized.headers };
     for (const key of Object.keys(headers)) {
@@ -48,6 +51,23 @@ export function sanitizeUrlForLog(urlStr: string): string {
     if (parsed.username || parsed.password) {
       parsed.username = 'REDACTED';
       parsed.password = 'REDACTED';
+    }
+    const sensitiveKeys = [
+      'auth',
+      'key',
+      'token',
+      'secret',
+      'password',
+      'cookie',
+      'apikey',
+      'credential',
+      'code',
+    ];
+    for (const paramKey of Array.from(parsed.searchParams.keys())) {
+      const lowerKey = paramKey.toLowerCase();
+      if (sensitiveKeys.some((s) => lowerKey.includes(s))) {
+        parsed.searchParams.set(paramKey, '[REDACTED]');
+      }
     }
     return parsed.toString();
   } catch {
@@ -90,7 +110,7 @@ function setupRequest(payload: Payload) {
     // always compress going upstream
     data = zlib.gzipSync(json, { level: 9 });
 
-    snykDebug('sending request to:', payload.url);
+    snykDebug('sending request to:', sanitizeUrlForLog(payload.url));
     snykDebug('request body size:', json.length);
     snykDebug('gzipped request body size:', data.length);
 
@@ -122,9 +142,7 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(
-      sanitizePayloadForLog(payload),
-    );
+    const payloadStr = jsonStringifyLargeObject(sanitizePayloadForLog(payload));
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
