@@ -9,6 +9,7 @@ import {
   INTEGRATION_NAME_ENVVAR,
   INTEGRATION_VERSION_ENVVAR,
   isHomebrew,
+  isInstalled,
   isScoop,
   validateHomebrew,
   validateScoopManifestFile,
@@ -203,5 +204,17 @@ describe('getIntegrationEnvironmentVersion', () => {
         { integrationEnvironmentVersion: '7.0.0', ...defaultArgsParams },
       ]),
     ).toBe('7.0.0');
+  });
+});
+
+describe('isInstalled', () => {
+  it('returns true for installed command', async () => {
+    const installed = await isInstalled('node');
+    expect(installed).toBe(true);
+  });
+
+  it('returns false for non-existent command', async () => {
+    const installed = await isInstalled('non_existent_binary_xyz_123');
+    expect(installed).toBe(false);
   });
 });
