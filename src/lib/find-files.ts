@@ -70,13 +70,15 @@ type DefaultFindConfig = {
   featureFlags: Set<string>;
 };
 
+const EMPTY_FEATURE_FLAGS = new Set<string>();
+
 const defaultFindConfig: DefaultFindConfig = {
   path: '',
   ignore: [],
   excludePaths: [],
   filter: [],
   levelsDeep: 4,
-  featureFlags: new Set<string>(),
+  featureFlags: EMPTY_FEATURE_FLAGS,
 };
 
 /**
@@ -122,13 +124,17 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
         foundAll.push(fileFound);
       }
     }
-    const filteredOutFiles = foundAll.filter((f) => !found.includes(f));
-    if (filteredOutFiles.length) {
-      debug(
-        `Filtered out ${filteredOutFiles.length}/${
-          foundAll.length
-        } files: ${filteredOutFiles.join(', ')}`,
-      );
+    // Bolt Optimization: Guard debug calculation so production runs avoid O(N^2) array searching and key allocations
+    if (debug.enabled) {
+      const foundSet = new Set(found);
+      const filteredOutFiles = foundAll.filter((f) => !foundSet.has(f));
+      if (filteredOutFiles.length) {
+        debug(
+          `Filtered out ${filteredOutFiles.length}/${
+            foundAll.length
+          } files: ${filteredOutFiles.join(', ')}`,
+        );
+      }
     }
     return {
       files: filterForDefaultManifests(found, config.featureFlags),
@@ -141,6 +147,8 @@ export async function find(findConfig: FindFilesConfig): Promise<FindFilesRes> {
   }
 }
 
+const excludePathSetCache = new WeakMap<string[], Set<string>>();
+
 export function isExcludedPath(
   resolvedPath: string,
   excludePaths: string[],
@@ -148,11 +156,19 @@ export function isExcludedPath(
   if (excludePaths.length === 0) {
     return false;
   }
-  if (process.platform === 'win32') {
-    const lowerPath = resolvedPath.toLowerCase();
-    return excludePaths.some((ep) => ep.toLowerCase() === lowerPath);
+  // Bolt Optimization: Cache case-normalized exclude sets in a WeakMap to avoid O(M*N) array scans and repeated string lowercasing
+  let pathSet = excludePathSetCache.get(excludePaths);
+  if (!pathSet) {
+    if (process.platform === 'win32') {
+      pathSet = new Set(excludePaths.map((ep) => ep.toLowerCase()));
+    } else {
+      pathSet = new Set(excludePaths);
+    }
+    excludePathSetCache.set(excludePaths, pathSet);
   }
-  return excludePaths.includes(resolvedPath);
+  const checkPath =
+    process.platform === 'win32' ? resolvedPath.toLowerCase() : resolvedPath;
+  return pathSet.has(checkPath);
 }
 
 function findFile(path: string, filter: string[] = []): string | null {
@@ -201,7 +217,7 @@ async function findInDirectory(
 
 function filterForDefaultManifests(
   files: string[],
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_FEATURE_FLAGS,
 ): string[] {
   const filteredFiles: string[] = [];
 
@@ -259,7 +275,7 @@ function filterForDefaultManifests(
 
 function detectProjectTypeFromFile(
   file: string,
-  featureFlags: Set<string> = new Set<string>(),
+  featureFlags: Set<string> = EMPTY_FEATURE_FLAGS,
 ): string | null {
   try {
     const packageManager = detectPackageManagerFromFile(file, featureFlags);
@@ -298,6 +314,7 @@ function chooseBestManifest(
   files: Array<{ base: string; path: string }>,
   projectType: string,
 ): string | null {
+  // Bolt Optimization: Use .find() instead of .filter()[0] to short-circuit manifest searching
   switch (projectType) {
     case 'node': {
       const nodeLockfiles = [
@@ -305,76 +322,87 @@ function chooseBestManifest(
         SUPPORTED_MANIFEST_FILES.YARN_LOCK as string,
         SUPPORTED_MANIFEST_FILES.PNPM_LOCK as string,
       ];
-      const lockFile = files.filter((path) =>
-        nodeLockfiles.includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple node lockfiles files, defaulting to ${lockFile.path}`,
-      );
+      const lockFile = files.find((path) => nodeLockfiles.includes(path.base));
       if (lockFile) {
+        debug(
+          `Encountered multiple node lockfiles files, defaulting to ${lockFile.path}`,
+        );
         return lockFile.path;
       }
-      const packageJson = files.filter((path) =>
-        ['package.json'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple npm manifest files, defaulting to ${packageJson.path}`,
-      );
-      return packageJson.path;
+      const packageJson = files.find((path) => path.base === 'package.json');
+      if (packageJson) {
+        debug(
+          `Encountered multiple npm manifest files, defaulting to ${packageJson.path}`,
+        );
+        return packageJson.path;
+      }
+      return null;
     }
     case 'rubygems': {
-      const defaultManifest = files.filter((path) =>
-        ['Gemfile.lock'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple gem manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (path) => path.base === 'Gemfile.lock',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple gem manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'cocoapods': {
-      const defaultManifest = files.filter((path) =>
-        ['Podfile'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple cocoapods manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((path) => path.base === 'Podfile');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple cocoapods manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'pip': {
-      const defaultManifest = files.filter((path) =>
-        ['Pipfile'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple pip manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((path) => path.base === 'Pipfile');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple pip manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'gradle': {
-      const defaultManifest = files.filter((path) =>
-        ['build.gradle'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple gradle manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (path) => path.base === 'build.gradle',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple gradle manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'poetry': {
-      const defaultManifest = files.filter((path) =>
-        ['pyproject.toml'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple poetry manifest files, defaulting to ${defaultManifest.path}`,
+      const defaultManifest = files.find(
+        (path) => path.base === 'pyproject.toml',
       );
-      return defaultManifest.path;
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple poetry manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     case 'hex': {
-      const defaultManifest = files.filter((path) =>
-        ['mix.exs'].includes(path.base),
-      )[0];
-      debug(
-        `Encountered multiple hex manifest files, defaulting to ${defaultManifest.path}`,
-      );
-      return defaultManifest.path;
+      const defaultManifest = files.find((path) => path.base === 'mix.exs');
+      if (defaultManifest) {
+        debug(
+          `Encountered multiple hex manifest files, defaulting to ${defaultManifest.path}`,
+        );
+        return defaultManifest.path;
+      }
+      return null;
     }
     default: {
       return null;
