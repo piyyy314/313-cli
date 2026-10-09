@@ -9,15 +9,17 @@ export function filterOutMissingDeps(depTree: DepTree): FilteredDepTree {
   const filteredDeps = {};
   const missingDeps: string[] = [];
 
-  if (!depTree.dependencies) {
+  const deps = depTree.dependencies;
+  if (!deps) {
     return {
       filteredDepTree: depTree,
       missingDeps,
     };
   }
 
-  for (const depKey of Object.keys(depTree.dependencies)) {
-    const dep = depTree.dependencies[depKey];
+  // Bolt: Use for...in loop instead of Object.keys() to avoid allocating temporary key arrays.
+  for (const depKey in deps) {
+    const dep = deps[depKey];
     if (
       (dep as any).missingLockFileEntry ||
       ((dep as any).labels && (dep as any).labels.missingLockFileEntry)

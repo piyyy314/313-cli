@@ -14,6 +14,9 @@ export const CONTRIBUTING_DEVELOPER_PERIOD_DAYS = 90;
 // Limit the number of commits returned from `git log` command to stay within maxBuffer limit
 export const MAX_COMMITS_IN_GIT_LOG = 500;
 
+// Pre-compiled regex for line splitting to avoid recreating RegExp objects per invocation
+const NEWLINE_SPLIT_REGEX = /\r?\n/;
+
 export async function getContributors(
   { endDate, periodDays, repoPath } = {
     endDate: new Date(),
@@ -78,15 +81,19 @@ export class GitRepoCommitStats {
   }
 
   public getRepoContributors(): Contributor[] {
-    const uniqueAuthorEmails = this.getUniqueAuthorEmails();
+    // Collect the most recent commit timestamp for each unique author email in a single linear pass O(N)
+    // instead of scanning commitInfos repeatedly for each unique author O(U * N).
+    const latestCommitMap = new Map<string, string>();
+    for (const commit of this.commitInfos) {
+      if (!latestCommitMap.has(commit.authorEmail)) {
+        latestCommitMap.set(commit.authorEmail, commit.commitTimestamp);
+      }
+    }
     const contributors: Contributor[] = [];
-    for (const nextUniqueAuthorEmail of uniqueAuthorEmails) {
-      const latestCommitTimestamp = this.getMostRecentCommitTimestamp(
-        nextUniqueAuthorEmail,
-      );
+    for (const [email, lastCommitDate] of latestCommitMap) {
       contributors.push({
-        email: nextUniqueAuthorEmail,
-        lastCommitDate: latestCommitTimestamp,
+        email,
+        lastCommitDate,
       });
     }
     return contributors;
@@ -151,11 +158,7 @@ export async function runGitLog(
 }
 
 export function separateLines(inputText: string): string[] {
-  const linuxStyleNewLine = '\n';
-  const windowsStyleNewLine = '\r\n';
-  const reg = new RegExp(`${linuxStyleNewLine}|${windowsStyleNewLine}`);
-  const lines = inputText.trim().split(reg);
-  return lines;
+  return inputText.trim().split(NEWLINE_SPLIT_REGEX);
 }
 
 export function execShell(
