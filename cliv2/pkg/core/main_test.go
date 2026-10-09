@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,17 +14,22 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/rs/zerolog"
-	"github.com/snyk/cli/cliv2/internal/helpdocs"
-	"github.com/snyk/cli/cliv2/internal/helprouting"
+	catalogcli "github.com/snyk/error-catalog-golang-public/cli"
 	"github.com/snyk/error-catalog-golang-public/code"
+	"github.com/snyk/error-catalog-golang-public/snyk"
 	"github.com/snyk/error-catalog-golang-public/snyk_errors"
+	"github.com/snyk/go-application-framework/pkg/analytics"
 	"github.com/snyk/go-application-framework/pkg/apiclients/testapi"
 	"github.com/snyk/go-application-framework/pkg/configuration"
 	localworkflows "github.com/snyk/go-application-framework/pkg/local_workflows"
 	"github.com/snyk/go-application-framework/pkg/local_workflows/content_type"
 	"github.com/snyk/go-application-framework/pkg/local_workflows/json_schemas"
 	"github.com/snyk/go-application-framework/pkg/local_workflows/local_models"
+	"github.com/snyk/go-application-framework/pkg/local_workflows/output_workflow"
+	"github.com/snyk/go-application-framework/pkg/logging"
 	"github.com/snyk/go-application-framework/pkg/mocks"
+	"github.com/snyk/go-application-framework/pkg/networking"
+	"github.com/snyk/go-application-framework/pkg/ui/consoleui"
 	"github.com/snyk/go-application-framework/pkg/utils/ufm"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 	"github.com/spf13/cobra"
@@ -31,15 +37,46 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior"
+	"github.com/snyk/cli/cliv2/internal/helpdocs"
+	"github.com/snyk/cli/cliv2/internal/helprouting"
+
 	"github.com/snyk/cli/cliv2/internal/cliv2"
 	"github.com/snyk/cli/cliv2/internal/constants"
 	clierrors "github.com/snyk/cli/cliv2/internal/errors"
+	"github.com/snyk/cli/cliv2/pkg/basic_workflows"
 )
 
 func cleanup() {
 	helpProvided = false
 	globalConfiguration = nil
 	globalEngine = nil
+}
+
+func Test_configureSarifEqualJSON_IncludesHTMLFileWriter(t *testing.T) {
+	config := configuration.NewWithOpts()
+
+	configureSarifEqualJSON(config, nil)
+
+	writers, ok := config.Get(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS).([]output_workflow.FileWriter)
+	require.True(t, ok)
+	require.Len(t, writers, 4)
+	assert.Equal(t, output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE, writers[2].NameConfigKey)
+	assert.Equal(t, output_workflow.HTML_MIME_TYPE, writers[2].MimeType)
+	assert.Empty(t, writers[2].TemplateFiles)
+}
+
+func Test_configureSarifEqualJSON_IncludesTOONFileWriter(t *testing.T) {
+	config := configuration.NewWithOpts()
+
+	configureSarifEqualJSON(config, nil)
+
+	writers, ok := config.Get(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS).([]output_workflow.FileWriter)
+	require.True(t, ok)
+	require.Len(t, writers, 4)
+	assert.Equal(t, output_workflow.OUTPUT_CONFIG_KEY_TOON_FILE, writers[3].NameConfigKey)
+	assert.Equal(t, output_workflow.TOON_MIME_TYPE, writers[3].MimeType)
+	assert.Empty(t, writers[3].TemplateFiles)
 }
 
 func Test_mainWithErrorCode(t *testing.T) {
@@ -66,6 +103,78 @@ func Test_mainWithErrorCode(t *testing.T) {
 		errCode := mainWithErrorCode(nil)
 		assert.Equal(t, 2, errCode)
 	})
+}
+
+func Test_populateRedactionTerms(t *testing.T) {
+	mockController := gomock.NewController(t)
+	mockEngine := mocks.NewMockEngine(mockController)
+	mockEngine.EXPECT().GetWorkflows().Return(nil)
+
+	config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
+	t.Setenv("SNYK_TEST_REDACTION_MARKER", "unmistakably-secret-value")
+
+	// No debugEnabled anywhere in this call: populateRedactionTerms runs
+	// unconditionally at its call site, so proving it sets config here proves
+	// the behavior holds regardless of debugEnabled.
+	terms := populateRedactionTerms(config, mockEngine)
+
+	assert.Contains(t, terms, "unmistakably-secret-value")
+	assert.Equal(t, terms, config.GetStringSlice(logging.REDACTION_TERMS))
+}
+
+func Test_populateRedactionTerms_excludesClientMachineId(t *testing.T) {
+	mockController := gomock.NewController(t)
+	mockEngine := mocks.NewMockEngine(mockController)
+	mockEngine.EXPECT().GetWorkflows().Return(nil)
+
+	config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
+	machineId := "studio-device-id-abc12345"
+	t.Setenv("INTERNAL_SNYK_CLIENT_MACHINE_ID", machineId)
+
+	terms := populateRedactionTerms(config, mockEngine)
+
+	assert.NotContains(t, terms, machineId, "client machine id must never be swept into REDACTION_TERMS, or the analytics scrub chokepoint strips it right back out of its own extension")
+}
+
+func Test_populateRedactionTerms_excludesDetectedAgent(t *testing.T) {
+	// Not on agent.canonicalAgent's short-circuit list, so AI_AGENT is trusted
+	// verbatim into the persona.agent extension. GetUnknownParameters
+	// tokenizes its input on whitespace, so a multi-word value only survives
+	// unredacted if each of its words is excluded too, not just the joined
+	// string as a whole.
+	cases := []struct {
+		name      string
+		agent     string
+		wantWords []string
+	}{
+		{
+			name:      "single word",
+			agent:     "some-unlisted-harness",
+			wantWords: []string{"some-unlisted-harness"},
+		},
+		{
+			name:      "words with spaces",
+			agent:     "My Custom Harness",
+			wantWords: []string{"My", "Custom", "Harness"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockController := gomock.NewController(t)
+			mockEngine := mocks.NewMockEngine(mockController)
+			mockEngine.EXPECT().GetWorkflows().Return(nil)
+
+			config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
+			t.Setenv("AI_AGENT", tc.agent)
+
+			terms := populateRedactionTerms(config, mockEngine)
+
+			for _, word := range tc.wantWords {
+				assert.NotContains(t, terms, word, "a caller-declared AI_AGENT value must never be swept into REDACTION_TERMS, or the analytics scrub chokepoint strips it right back out of the persona.agent extension")
+			}
+		})
+	}
 }
 
 func Test_initApplicationConfiguration_DisablesAnalytics(t *testing.T) {
@@ -654,6 +763,120 @@ func Test_displayError(t *testing.T) {
 		config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
 		displayError(err, userInterface, config, t.Context(), false)
 	})
+
+	t.Run("renders supported catalog errors as TOON without diagnostics", func(t *testing.T) {
+		tests := []struct {
+			name string
+			err  error
+		}{
+			{name: "scan", err: catalogcli.NewNoSupportedFilesFoundError("scan failed")},
+			{name: "authentication", err: snyk.NewUnauthorisedError("authentication failed")},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				var stdout bytes.Buffer
+				var stderr bytes.Buffer
+				console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
+				config := configuration.NewWithOpts()
+				config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
+				config.Set(configuration.INPUT_DIRECTORY, "/workspace")
+
+				displayError(tt.err, console, config, t.Context(), false)
+
+				expected := fmt.Sprintf("error: %s\npath: /workspace\n", getErrorMessage(tt.err))
+				assert.Equal(t, expected, stdout.String())
+				assert.Empty(t, stderr.String())
+			})
+		}
+	})
+
+	t.Run("preserves JSON error output", func(t *testing.T) {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
+		config := configuration.NewWithOpts()
+		config.Set(output_workflow.OUTPUT_CONFIG_KEY_JSON, true)
+		config.Set(configuration.INPUT_DIRECTORY, "/workspace")
+
+		displayError(catalogcli.NewNoSupportedFilesFoundError("scan failed"), console, config, t.Context(), false)
+
+		assert.JSONEq(t, `{"ok":false,"error":"scan failed","path":"/workspace"}`, stdout.String())
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("keeps data rendering errors on stderr", func(t *testing.T) {
+		var stdout bytes.Buffer
+		var stderr bytes.Buffer
+		console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
+		config := configuration.NewWithOpts()
+		config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
+
+		displayError(catalogcli.NewDataRenderingError("render failed"), console, config, t.Context(), false)
+
+		assert.Empty(t, stdout.String())
+		assert.Contains(t, stderr.String(), "render failed")
+	})
+
+	t.Run("reports TOON output failures as diagnostics", func(t *testing.T) {
+		err := catalogcli.NewNoSupportedFilesFoundError("scan failed")
+		userInterface.EXPECT().Output(gomock.Any()).Return(assert.AnError).Times(1)
+		userInterface.EXPECT().OutputError(assert.AnError).Return(nil).Times(1)
+
+		config := configuration.NewWithOpts()
+		config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
+		displayError(err, userInterface, config, t.Context(), false)
+	})
+}
+
+// Test_displayError_errorStreamSelection wires displayError to the same
+// behavior.SelectErrorOutputWriter used by runMainWorkflow, so it catches
+// regressions in that stream selection rather than a copy of its logic.
+// It's the regression test for CLI-1828: `snyk test --html > out.html`
+// must not leak errors into the redirected file.
+func Test_displayError_errorStreamSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		formats    []string
+		wantStderr bool
+	}{
+		{"no format flags", nil, false},
+		{"json alone", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON}, false},
+		{"toon alone", []string{output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
+		{"sarif alone", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF}, true},
+		{"html alone", []string{output_workflow.OUTPUT_CONFIG_KEY_HTML}, true},
+		{"json + sarif", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_SARIF}, false},
+		{"json + html", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_HTML}, false},
+		{"json + toon", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
+		{"sarif + html", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF, output_workflow.OUTPUT_CONFIG_KEY_HTML}, true},
+		{"sarif + toon", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF, output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
+		{"toon + html", []string{output_workflow.OUTPUT_CONFIG_KEY_TOON, output_workflow.OUTPUT_CONFIG_KEY_HTML}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := configuration.NewWithOpts()
+			for _, format := range tc.formats {
+				config.Set(format, true)
+			}
+
+			err := catalogcli.NewNoSupportedFilesFoundError("scan failed")
+
+			var stdout, stderr bytes.Buffer
+			errorWriter := behavior.SelectErrorOutputWriter(config, &stdout, &stderr)
+			console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(errorWriter))
+
+			displayError(err, console, config, t.Context(), false)
+
+			message := getErrorMessage(err)
+			if tc.wantStderr {
+				// OutputError wraps text at a fixed width, so collapse whitespace before matching.
+				assert.Contains(t, strings.Join(strings.Fields(stderr.String()), " "), message)
+				assert.Empty(t, stdout.String())
+			} else {
+				assert.Contains(t, stdout.String(), message)
+				assert.Empty(t, stderr.String())
+			}
+		})
+	}
 }
 
 func Test_doctorTip(t *testing.T) {
@@ -799,6 +1022,116 @@ func Test_processError(t *testing.T) {
 	})
 }
 
+// Test_tearDown_exitCode1WithNetworkErrors exercises the real tearDown function
+// end-to-end, verifying that auxiliary network errors collected during a
+// successful legacycli execution (exit code 1 = vulns found) do not leak to the
+// user's terminal.
+//
+// The bug: processError joins the exit error with collected network errors via
+// FindMostRelevantError/errors.Join. The joined error no longer satisfies the
+// direct type assertion (*exec.ExitError) in displayError, so displayError
+// prints the auxiliary network error after valid command output — breaking JSON
+// output and showing misleading errors.
+func Test_tearDown_exitCode1WithNetworkErrors(t *testing.T) {
+	setupTearDownGlobals := func(t *testing.T, ctrl *gomock.Controller) (*mocks.MockUserInterface, analytics.Analytics) {
+		t.Helper()
+
+		globalConfiguration = configuration.NewWithOpts()
+		globalConfiguration.Set(configuration.ANALYTICS_DISABLED, true)
+		globalEngine = workflow.NewWorkFlowEngine(globalConfiguration)
+
+		err := basic_workflows.Init(globalEngine)
+		assert.NoError(t, err)
+		err = globalEngine.Init()
+		assert.NoError(t, err)
+
+		mockUI := mocks.NewMockUserInterface(ctrl)
+		globalEngine.SetUserInterface(mockUI)
+
+		globalContext = t.Context()
+		noopLog := zerolog.New(io.Discard)
+		globalLogger = &noopLog
+
+		cliAnalytics := globalEngine.GetAnalytics()
+		return mockUI, cliAnalytics
+	}
+
+	t.Run("legacycli exit code 1 with collected network error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUI, cliAnalytics := setupTearDownGlobals(t, ctrl)
+		defer cleanup()
+
+		commandErr := exec.Command("sh", "-c", "exit 1").Run()
+		require.Error(t, commandErr)
+
+		auxiliaryNetworkError := fmt.Errorf("transient network error during provenance fetch")
+		errorList := []error{auxiliaryNetworkError}
+
+		// OutputError must NOT be called — the command succeeded (vulns found).
+		mockUI.EXPECT().OutputError(gomock.Any(), gomock.Any()).MaxTimes(0)
+		mockUI.EXPECT().Output(gomock.Any()).MaxTimes(0)
+
+		na := globalEngine.GetNetworkAccess()
+		exitCode := tearDown(commandErr, errorList, time.Now(), networking.UserAgentInfo{}, cliAnalytics, na)
+		assert.Equal(t, constants.SNYK_EXIT_CODE_VULNERABILITIES_FOUND, exitCode)
+	})
+
+	t.Run("ErrorWithExitCode 1 with collected network error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUI, cliAnalytics := setupTearDownGlobals(t, ctrl)
+		defer cleanup()
+
+		commandErr := &clierrors.ErrorWithExitCode{
+			ExitCode: constants.SNYK_EXIT_CODE_VULNERABILITIES_FOUND,
+		}
+		auxiliaryNetworkError := fmt.Errorf("transient network error during provenance fetch")
+		errorList := []error{auxiliaryNetworkError}
+
+		mockUI.EXPECT().OutputError(gomock.Any(), gomock.Any()).MaxTimes(0)
+		mockUI.EXPECT().Output(gomock.Any()).MaxTimes(0)
+
+		na := globalEngine.GetNetworkAccess()
+		exitCode := tearDown(commandErr, errorList, time.Now(), networking.UserAgentInfo{}, cliAnalytics, na)
+		assert.Equal(t, constants.SNYK_EXIT_CODE_VULNERABILITIES_FOUND, exitCode)
+	})
+
+	t.Run("exit code 2 with network errors still displays the error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUI, cliAnalytics := setupTearDownGlobals(t, ctrl)
+		defer cleanup()
+
+		commandErr := exec.Command("sh", "-c", "exit 2").Run()
+		require.Error(t, commandErr)
+
+		auxiliaryNetworkError := fmt.Errorf("network error")
+		errorList := []error{auxiliaryNetworkError}
+
+		// displayError SHOULD show this error — the command genuinely failed.
+		mockUI.EXPECT().OutputError(gomock.Any(), gomock.Any()).MinTimes(1)
+
+		na := globalEngine.GetNetworkAccess()
+		exitCode := tearDown(commandErr, errorList, time.Now(), networking.UserAgentInfo{}, cliAnalytics, na)
+		assert.Equal(t, constants.SNYK_EXIT_CODE_ERROR, exitCode)
+	})
+
+	t.Run("arbitrary error with network errors still displays the error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockUI, cliAnalytics := setupTearDownGlobals(t, ctrl)
+		defer cleanup()
+
+		commandErr := fmt.Errorf("this is a failure")
+		auxiliaryNetworkError := fmt.Errorf("network error")
+		errorList := []error{auxiliaryNetworkError}
+
+		// displayError SHOULD show this error — the command genuinely failed.
+		mockUI.EXPECT().OutputError(gomock.Any(), gomock.Any()).MinTimes(1)
+
+		na := globalEngine.GetNetworkAccess()
+		exitCode := tearDown(commandErr, errorList, time.Now(), networking.UserAgentInfo{}, cliAnalytics, na)
+		assert.Equal(t, constants.SNYK_EXIT_CODE_ERROR, exitCode)
+	})
+}
+
 func loadJsonFile(t *testing.T, filename string) []byte {
 	t.Helper()
 
@@ -819,4 +1152,47 @@ func testHelpRouter() *helprouting.Router {
 		LegacyHelp: func() error { return nil },
 		HasUserDoc: helpDocs.HasUserDoc,
 	}
+}
+
+func Test_defaultNetworkRequestRetryAllowedPaths(t *testing.T) {
+	tests := []struct {
+		name          string
+		existingValue interface{}
+		expected      interface{}
+	}{
+		{"nil yields CLI defaults", nil, []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation"}},
+		{"csv string splits and merges with defaults", "a,b", []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation", "a", "b"}},
+		{"csv string trims whitespace and merges", "a, b", []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation", "a", "b"}},
+		{"empty string yields just CLI defaults", "", []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation"}},
+		{"non-empty slice merges with defaults", []string{"x"}, []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation", "x"}},
+		{"empty slice yields CLI defaults", []string{}, []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation"}},
+		{"interface slice from JSON merges with defaults", []interface{}{"y", "z"}, []string{"oauth2/token", "test-dep-graph", "verify/token", "feature_flags/evaluation", "y", "z"}},
+	}
+
+	config := configuration.NewWithOpts()
+	defaultFunction := defaultNetworkRequestRetryAllowedPaths()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := defaultFunction(config, tt.existingValue)
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func Test_NetworkRequestRetryAllowedPaths_Integration(t *testing.T) {
+	defer cleanup()
+	oldArgs := append([]string{}, os.Args...)
+	os.Args = []string{"snyk", "--version"}
+	defer func() { os.Args = oldArgs }()
+
+	_ = mainWithErrorCode(nil)
+
+	paths := globalConfiguration.GetStringSlice(configuration.NETWORK_REQUEST_RETRY_ALLOWED_PATHS)
+	assert.Contains(t, paths, "oauth2/token")
+	assert.Contains(t, paths, "test-dep-graph")
+	assert.Contains(t, paths, "verify/token")
+	assert.Contains(t, paths, "feature_flags/evaluation")
 }

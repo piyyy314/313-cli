@@ -33,6 +33,7 @@ const featureFlagDefaults = (): Map<string, boolean> => {
     ['sbomTestReachability', false],
     ['useTestShimForOSCliTest', false],
     ['cliDotnetRuntimeResolution', false],
+    ['optOutUnifiedTestApiCliRollout', false],
   ]);
 };
 
@@ -501,17 +502,27 @@ export const fakeServer = (basePath: string, snykToken: string): FakeServer => {
 
   // Feature flag batch evaluation used by the Go binary's GAF layer
   // (config_utils.AddFeatureFlagToConfig → featureflaggateway.EvaluateFlags).
-  // Request: POST /hidden/orgs/:orgId/feature_flags/evaluation
   // Body: { data: { attributes: { flags: ["flag-name", ...] } } }
-  app.post('/hidden/orgs/:orgId/feature_flags/evaluation', (req, res) => {
+  // GAF derives the URL from the API URL, so the /api prefix may or may not be present.
+  const flagEvaluationPaths = [
+    '/hidden/orgs/:orgId/feature_flags/evaluation',
+    '/api/hidden/orgs/:orgId/feature_flags/evaluation',
+  ];
+  app.post(flagEvaluationPaths, (req, res) => {
     const flags: string[] = req.body?.data?.attributes?.flags ?? [];
     // Maps batch evaluation API flag names to their GAF config keys.
     // The batch endpoint receives short API names; tests call setFeatureFlag
     // with the full config key. Add an entry here when writing acceptance tests
     // for a new flag so both forms resolve correctly.
     const batchNameToConfigKey: Record<string, string> = {
-      'unified-test-api-os-cli':
+      // Successor to `unified-test-api-os-cli`. Both names stay live: CLI
+      // versions predating the OSF-503 fix keep asking for the old one and
+      // stay at its frozen exposure, while only builds carrying the fix ask
+      // for this one, so the rollout can expand without reaching them.
+      'unified-test-api-os-cli-v2':
         'internal_snyk_cli_use_unified_test_api_for_os_cli_test',
+      optOutUnifiedTestApiCliRollout:
+        'internal_snyk_cli_opt_out_unified_test_api_rollout',
     };
     const evaluations = flags.map((key) => {
       const alias = batchNameToConfigKey[key] ?? key;

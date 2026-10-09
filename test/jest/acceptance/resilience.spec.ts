@@ -18,6 +18,8 @@ const FAKE_ORG = '11111111-1111-1111-1111-111111111111';
  */
 const RATE_LIMIT_SECONDS_REMAINING = 2;
 
+const UNREACHABLE_PROXY = 'http://127.0.0.1:1';
+
 // Commands that should behave consistently across all fault scenarios
 const COMMANDS_UNDER_TEST = [
   'test',
@@ -247,6 +249,30 @@ const RESILIENCE_SCENARIOS: ResilienceScenario[] = [
       expect(rateLimitWarnings?.length ?? 0).toBeGreaterThanOrEqual(2);
     },
   },
+
+  // Scenario 6
+  {
+    name: 'unreachable-proxy',
+    description: 'Proxy is configured but refuses the connection',
+    setup: () => {
+      // No server side setup, the request never leaves the machine.
+    },
+    expectedExitCode: EXIT_CODES.ERROR,
+    expectedErrorCode: 'SNYK-CLI-0028',
+    onlyCommands: ['whoami --experimental'],
+    envOverrides: {
+      HTTP_PROXY: UNREACHABLE_PROXY,
+      HTTPS_PROXY: UNREACHABLE_PROXY,
+      http_proxy: UNREACHABLE_PROXY,
+      https_proxy: UNREACHABLE_PROXY,
+      NO_PROXY: '',
+      no_proxy: '',
+    },
+    assert: ({ server, result }) => {
+      expect(server.getRequests()).toHaveLength(0);
+      expect(result.stdout).toContain(UNREACHABLE_PROXY);
+    },
+  },
 ];
 
 function shouldSkip(scenario: ResilienceScenario, command: string): boolean {
@@ -270,6 +296,10 @@ describe('Resilience - Consistent CLI Behavior', () => {
       SNYK_TOKEN: '123456789',
       SNYK_HTTP_PROTOCOL_UPGRADE: '0',
       SNYK_CFG_ORG: FAKE_ORG,
+      // Reading this flag triggers a network call earlier than the tests
+      // expect, which breaks due to the slow network calls mechanism these
+      // tests use to trigger timeouts.
+      INTERNAL_SNYK_CONTRIBUTORS_ENABLED: 'false',
     };
 
     server = fakeServer(baseApi, baseEnv.SNYK_TOKEN);

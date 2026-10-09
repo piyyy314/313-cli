@@ -9,7 +9,6 @@ import (
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -33,11 +32,13 @@ import (
 	"github.com/snyk/go-application-framework/pkg/instrumentation"
 	"github.com/snyk/go-application-framework/pkg/logging"
 
+	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior"
 	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior/legacy"
 	"github.com/snyk/cli/cliv2/internal/cliv2"
 	"github.com/snyk/cli/cliv2/internal/constants"
 
 	persona "github.com/snyk/cli/cliv2/internal/persona"
+	"github.com/snyk/cli/cliv2/internal/persona/agent"
 	cliv2utils "github.com/snyk/cli/cliv2/internal/utils"
 
 	localworkflows "github.com/snyk/go-application-framework/pkg/local_workflows"
@@ -103,12 +104,6 @@ const (
 	maxNetworkRequestAttempts string = "max-attempts"
 	teardownTimeout                  = 5 * time.Second
 )
-
-type JsonErrorStruct struct {
-	Ok       bool   `json:"ok"`
-	ErrorMsg string `json:"error"`
-	Path     string `json:"path"`
-}
 
 type HandleError int
 
@@ -192,12 +187,11 @@ func runMainWorkflow(config configuration.Configuration, cmd *cobra.Command, arg
 	}
 
 	// init UI
-	errorUI := consoleui.WithErrorOutput(os.Stdout)
-	if output_workflow.DefaultOutputIsStructured(config) {
-		errorUI = consoleui.WithErrorOutput(os.Stderr)
-	}
+	errorUI := consoleui.WithErrorOutput(behavior.SelectErrorOutputWriter(config, os.Stdout, os.Stderr))
 	mainUI := consoleui.New(consoleui.WithInput(os.Stdin), consoleui.WithOutput(os.Stdout), consoleui.WithProgressWriter(os.Stderr), errorUI)
 	globalEngine.SetUserInterface(mainUI)
+
+	updateConfigFromParameter(config, args, rawArgs)
 
 	// global handling of experimental commands
 	if config_utils.IsExperimental(cmd.Flags()) {
@@ -205,8 +199,6 @@ func runMainWorkflow(config configuration.Configuration, cmd *cobra.Command, arg
 			return cli.NewCommandIsExperimentalError(getFullCommandString(cmd))
 		}
 	}
-
-	updateConfigFromParameter(config, args, rawArgs)
 
 	name := getFullCommandString(cmd)
 	globalLogger.Print("Running ", name)
@@ -260,8 +252,13 @@ func runLegacyHelp() error {
 }
 
 func runTestCommandWithSarifEqualJson(cmd *cobra.Command, args []string, templateFiles []string) error {
+	configureSarifEqualJSON(globalConfiguration, templateFiles)
+	return runCommand(cmd, args)
+}
+
+func configureSarifEqualJSON(config configuration.Configuration, templateFiles []string) {
 	// ensure legacy behavior, where sarif and json can be used interchangeably
-	globalConfiguration.AddAlternativeKeys(output_workflow.OUTPUT_CONFIG_KEY_SARIF, []string{output_workflow.OUTPUT_CONFIG_KEY_JSON})
+	config.AddAlternativeKeys(output_workflow.OUTPUT_CONFIG_KEY_SARIF, []string{output_workflow.OUTPUT_CONFIG_KEY_JSON})
 
 	fileWriters := []output_workflow.FileWriter{
 		{
@@ -276,16 +273,26 @@ func runTestCommandWithSarifEqualJson(cmd *cobra.Command, args []string, templat
 			TemplateFiles:     templateFiles,
 			WriteEmptyContent: false,
 		},
+		{
+			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE,
+			MimeType:          output_workflow.HTML_MIME_TYPE,
+			TemplateFiles:     nil,
+			WriteEmptyContent: true,
+		},
+		{
+			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_TOON_FILE,
+			MimeType:          output_workflow.TOON_MIME_TYPE,
+			TemplateFiles:     nil,
+			WriteEmptyContent: true,
+		},
 	}
-	globalConfiguration.Set(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS, fileWriters)
+	config.Set(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS, fileWriters)
 
 	// ensure that json is translated to sarif for the default writer as well
 	defaultWriterLookup := map[string]string{
 		output_workflow.JSON_MIME_TYPE: output_workflow.SARIF_MIME_TYPE,
 	}
-	globalConfiguration.Set(output_workflow.OUTPUT_CONFIG_KEY_DEFAULT_WRITER_LUT, defaultWriterLookup)
-
-	return runCommand(cmd, args)
+	config.Set(output_workflow.OUTPUT_CONFIG_KEY_DEFAULT_WRITER_LUT, defaultWriterLookup)
 }
 
 func runCodeTestCommand(cmd *cobra.Command, args []string) error {
@@ -463,17 +470,27 @@ func displayError(err error, userInterface ui.UserInterface, config configuratio
 			return
 		}
 
-		if config.GetBool(output_workflow.OUTPUT_CONFIG_KEY_JSON) {
+		outputFormat, structuredOutputSelected := behavior.StructuredErrorOutputFormat(config)
+		if structuredOutputSelected && !behavior.IsDataRenderingError(err) {
 			message := getErrorMessage(err)
 
-			jsonError := JsonErrorStruct{
+			structuredError := behavior.StructuredError{
 				Ok:       false,
 				ErrorMsg: message,
-				Path:     globalConfiguration.GetString(configuration.INPUT_DIRECTORY),
+				Path:     config.GetString(configuration.INPUT_DIRECTORY),
 			}
 
-			jsonErrorBuffer, _ := json.MarshalIndent(jsonError, "", "  ")
-			_ = userInterface.OutputError(fmt.Errorf("%s", jsonErrorBuffer))
+			output, renderErr := behavior.RenderStructuredError(outputFormat, structuredError)
+			if renderErr != nil {
+				_ = userInterface.OutputError(renderErr)
+				return
+			}
+
+			// This document is the command's structured output, so it goes to
+			// stdout; OutputError would route it to stderr in structured mode.
+			if outputErr := userInterface.Output(string(output)); outputErr != nil {
+				_ = userInterface.OutputError(outputErr)
+			}
 		} else {
 			ctx = context.WithValue(ctx, uitypes.ErrorTipKey, doctorTip(isCI))
 			uiError := userInterface.OutputError(err, ui.WithContext(ctx))
@@ -507,16 +524,22 @@ func tearDown(err error, errorList []error, startTime time.Time, ua networking.U
 	teardownCtx, cancel := context.WithTimeout(context.Background(), teardownTimeout)
 	defer cancel()
 
+	// Populated here (post-command) rather than at startup so the analytics scrub chokepoint
+	// (which reads logging.REDACTION_TERMS off of config) sees these terms on every run, not
+	// just under --debug, without forcing an ORGANIZATION/ORGANIZATION_SLUG network lookup
+	// before the command's own requests run.
+	populateRedactionTerms(globalConfiguration, globalEngine)
+
 	outputError := err
 	allErrors := errorList
 
-	if err != nil {
+	if cli_errors.IsFailure(err) {
 		allErrors, outputError = processError(err, errorList)
+	}
 
-		for _, tempError := range allErrors {
-			if tempError != nil {
-				cliAnalytics.AddError(tempError)
-			}
+	for _, tempError := range allErrors {
+		if tempError != nil {
+			cliAnalytics.AddError(tempError)
 		}
 	}
 
@@ -596,6 +619,7 @@ func mainWithErrorCode(additionalExts []workflow.ExtensionInit) int {
 
 	globalConfiguration.AddDefaultValue(configuration.FF_OAUTH_AUTH_FLOW_ENABLED, defaultOAuthFF(globalConfiguration))
 	globalConfiguration.AddDefaultValue(configuration.FF_TRANSFORMATION_WORKFLOW, configuration.StandardDefaultValueFunction(true))
+	globalConfiguration.AddDefaultValue(configuration.NETWORK_REQUEST_RETRY_ALLOWED_PATHS, defaultNetworkRequestRetryAllowedPaths())
 
 	if noProxyAuth := globalConfiguration.GetBool(basic_workflows.PROXY_NOAUTH); noProxyAuth {
 		globalConfiguration.Set(configuration.PROXY_AUTHENTICATION_MECHANISM, httpauth.StringFromAuthenticationMechanism(httpauth.NoAuth))
@@ -639,10 +663,8 @@ func mainWithErrorCode(additionalExts []workflow.ExtensionInit) int {
 
 	// We want to scrub the debug log of sensitive information. Since we have a list of commands we know can occur, we can intersect that with arguments we don't recognize, and automatically scrub all those from the logs.
 	if debugEnabled {
+		termsToRedact := populateRedactionTerms(globalConfiguration, globalEngine)
 		writeLogHeader(globalConfiguration, networkAccess)
-		knownTerms, _ := instrumentation.GetKnownCommandsAndFlags(globalEngine)
-		knownTerms = append(knownTerms, globalConfiguration.GetString(configuration.API_URL), globalConfiguration.GetString(configuration.ORGANIZATION), globalConfiguration.GetString(configuration.ORGANIZATION_SLUG))
-		termsToRedact := cliv2utils.GetUnknownParameters(os.Args[1:], os.Environ(), knownTerms)
 		scrubbedLogger.AddTermsToReplace(termsToRedact)
 	}
 
@@ -712,6 +734,28 @@ func mainWithErrorCode(additionalExts []workflow.ExtensionInit) int {
 	})
 
 	return finalExitCode
+}
+
+// populateRedactionTerms computes likely-secret literal values (unrecognized CLI
+// arguments and environment variables) and records them on config under
+// logging.REDACTION_TERMS, so the analytics scrub chokepoint can redact
+// them regardless of whether debug logging is enabled.
+func populateRedactionTerms(config configuration.Configuration, engine workflow.Engine) []string {
+	knownTerms, _ := instrumentation.GetKnownCommandsAndFlags(engine)
+	knownTerms = append(knownTerms, config.GetString(configuration.API_URL), config.GetString(configuration.ORGANIZATION), config.GetString(configuration.ORGANIZATION_SLUG), config.GetString(clientMachineIdConfigKey))
+	// AI_AGENT is trusted verbatim by agent.DetectAgent, and persona.Report
+	// falls back to that same raw value whenever the Harness name/version split
+	// or canonicalisation does not apply, so its raw value needs the same
+	// exclusion as the client machine id above. GetUnknownParameters tokenizes
+	// its input on whitespace, so a multi-word value only excludes as a whole if
+	// each of its words is excluded too.
+	if detectedAgent, ok := agent.DetectAgent(); ok {
+		knownTerms = append(knownTerms, detectedAgent)
+		knownTerms = append(knownTerms, strings.Fields(detectedAgent)...)
+	}
+	termsToRedact := cliv2utils.GetUnknownParameters(os.Args[1:], os.Environ(), knownTerms)
+	config.Set(logging.REDACTION_TERMS, termsToRedact)
+	return termsToRedact
 }
 
 func processError(err error, errorList []error) ([]error, error) {

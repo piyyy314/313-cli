@@ -445,6 +445,50 @@ test('request rejects if needle fails', (t) => {
     });
 });
 
+test('sanitizePayloadForLog redacts sensitive headers and URL credentials', (t) => {
+  const payload = {
+    url: 'https://admin:secretpass@api.snyk.io/v1?token=secret123',
+    headers: {
+      authorization: 'token secret123',
+      'x-api-key': 'key456',
+      'session-token': 'session789',
+      cookie: 'session_id=12345',
+      'content-type': 'application/json',
+    },
+  };
+  const sanitized = request.sanitizePayloadForLog(payload);
+  t.equal(sanitized.headers.authorization, '[REDACTED]');
+  t.equal(sanitized.headers['x-api-key'], '[REDACTED]');
+  t.equal(sanitized.headers['session-token'], '[REDACTED]');
+  t.equal(sanitized.headers.cookie, '[REDACTED]');
+  t.equal(sanitized.headers['content-type'], 'application/json');
+  t.ok(!sanitized.url.includes('admin'));
+  t.ok(!sanitized.url.includes('secretpass'));
+  t.ok(!sanitized.url.includes('secret123'));
+  t.equal(
+    payload.headers.authorization,
+    'token secret123',
+    'original payload is untouched',
+  );
+  t.end();
+});
+
+test('sanitizeUrlForLog redacts credentials and sensitive query parameters in URLs', (t) => {
+  const urlWithCreds =
+    'http://admin:secretpass@proxy.example.com:8080/path?token=xyz123&api_key=456&foo=bar';
+  const sanitized = request.sanitizeUrlForLog(urlWithCreds);
+  t.ok(!sanitized.includes('admin'));
+  t.ok(!sanitized.includes('secretpass'));
+  t.ok(!sanitized.includes('xyz123'));
+  t.ok(!sanitized.includes('456'));
+  t.ok(sanitized.includes('foo=bar'));
+  t.ok(sanitized.includes('REDACTED'));
+
+  const safeUrl = 'https://api.snyk.io/v1';
+  t.equal(request.sanitizeUrlForLog(safeUrl), safeUrl);
+  t.end();
+});
+
 test('request calls needle as expected and will not update HTTP to HTTPS if envvar is set', (t) => {
   process.env.SNYK_HTTP_PROTOCOL_UPGRADE = '0';
   needleStub.yields(null, { statusCode: 200 }, 'text');

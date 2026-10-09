@@ -38,3 +38,4 @@ async function makeRequestWrapper(
 }
 
 export { makeRequestWrapper as makeRequest };
+export { sanitizePayloadForLog, sanitizeUrlForLog } from './request';
