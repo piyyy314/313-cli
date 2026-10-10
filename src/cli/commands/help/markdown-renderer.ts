@@ -121,7 +121,7 @@ marked.setOptions({
   mangle: false,
 });
 
-const htmlUnescapes = {
+const HTML_UNESCAPE_MAP: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
   '&gt;': '>',
@@ -131,17 +131,19 @@ const htmlUnescapes = {
   '&#x20;': '',
 };
 
+// Pre-compiled regex for single-pass HTML entity unescaping
+const HTML_UNESCAPE_RE = /&amp;|&lt;|&gt;|&quot;|&#39;|&#96;|&#x20;/g;
+
 /**
  * @description Replace HTML entities with their non-encoded variant
  * @param {string} text
  * @returns {string}
  */
 function unescape(text: string): string {
-  Object.entries(htmlUnescapes).forEach(([escapedChar, unescapedChar]) => {
-    const escapedCharRegExp = new RegExp(escapedChar, 'g');
-    text = text.replace(escapedCharRegExp, unescapedChar);
-  });
-  return text;
+  return text.replace(
+    HTML_UNESCAPE_RE,
+    (match) => HTML_UNESCAPE_MAP[match] ?? match,
+  );
 }
 
 export function renderMarkdown(markdown: string): string {
