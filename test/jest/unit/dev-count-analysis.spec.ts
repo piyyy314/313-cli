@@ -31,9 +31,17 @@ describe('cli dev count via git log analysis', () => {
         10,
       );
 
-    const withMergesGitLogCommand = `git --no-pager log --pretty=tformat:"%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI${SERIOUS_DELIMITER}%s" --after="${timestampEpochSecondsStartOfPeriod}" --until="${timestampEpochSecondsEndOfPeriod}" --max-count=${MAX_COMMITS_IN_GIT_LOG}`;
+    const gitArgs = [
+      '--no-pager',
+      'log',
+      `--pretty=tformat:%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI${SERIOUS_DELIMITER}%s`,
+      `--after=${timestampEpochSecondsStartOfPeriod}`,
+      `--until=${timestampEpochSecondsEndOfPeriod}`,
+      `--max-count=${MAX_COMMITS_IN_GIT_LOG}`,
+    ];
     const withMergesGitLogStdout: string = await execShell(
-      withMergesGitLogCommand,
+      'git',
+      gitArgs,
       process.cwd(),
     );
     const withMergesLogLines = separateLines(withMergesGitLogStdout);
