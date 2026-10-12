@@ -1,12 +1,57 @@
 const mockNeedleRequest = jest.fn();
 
-import { makeRequest } from '../../../../../src/lib/request/request';
+import {
+  makeRequest,
+  sanitizePayloadForLog,
+} from '../../../../../src/lib/request/request';
 import { Payload } from '../../../../../src/lib/request/types';
 
 jest.mock('needle', () => {
   return {
     request: mockNeedleRequest,
   };
+});
+
+describe('sanitizePayloadForLog', () => {
+  it('redacts sensitive headers, url params, and query string object properties', () => {
+    const payload: Payload = {
+      body: {},
+      method: 'get',
+      url: 'https://example.com/api?token=secret123&other=safe',
+      headers: {
+        authorization: 'Bearer token123',
+        'x-api-key': 'key123',
+        'content-type': 'application/json',
+      },
+      qs: {
+        token: 'secret_qs',
+        apiKey: 'key_qs',
+        user: 'john_doe',
+      },
+    };
+
+    const sanitized = sanitizePayloadForLog(payload);
+
+    expect(sanitized.headers).toEqual({
+      authorization: '[REDACTED]',
+      'x-api-key': '[REDACTED]',
+      'content-type': 'application/json',
+    });
+
+    expect(sanitized.qs).toEqual({
+      token: '[REDACTED]',
+      apiKey: '[REDACTED]',
+      user: 'john_doe',
+    });
+
+    expect(sanitized.url).toContain('token=%5BREDACTED%5D');
+    expect(sanitized.url).toContain('other=safe');
+  });
+
+  it('handles null/undefined payload gracefully', () => {
+    expect(sanitizePayloadForLog(null as any)).toBeNull();
+    expect(sanitizePayloadForLog(undefined as any)).toBeUndefined();
+  });
 });
 
 describe('needle header auth failed', () => {
