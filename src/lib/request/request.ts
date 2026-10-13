@@ -27,20 +27,37 @@ export function sanitizePayloadForLog(payload: Payload): Payload {
   if (sanitized.url) {
     sanitized.url = sanitizeUrlForLog(sanitized.url);
   }
+  const sensitiveKeys = [
+    'auth',
+    'key',
+    'token',
+    'secret',
+    'password',
+    'cookie',
+    'apikey',
+    'credential',
+    'code',
+  ];
   if (sanitized.headers) {
     const headers: Record<string, any> = { ...sanitized.headers };
     for (const key of Object.keys(headers)) {
       const lowerKey = key.toLowerCase();
-      if (
-        lowerKey.includes('auth') ||
-        lowerKey.includes('key') ||
-        lowerKey.includes('token') ||
-        lowerKey.includes('cookie')
-      ) {
+      if (sensitiveKeys.some((s) => lowerKey.includes(s))) {
         headers[key] = '[REDACTED]';
       }
     }
     sanitized.headers = headers;
+  }
+  // Redact sensitive query parameters in payload.qs to prevent credential leakage in debug logs
+  if (sanitized.qs) {
+    const qs: Record<string, any> = { ...sanitized.qs };
+    for (const key of Object.keys(qs)) {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveKeys.some((s) => lowerKey.includes(s))) {
+        qs[key] = '[REDACTED]';
+      }
+    }
+    sanitized.qs = qs;
   }
   return sanitized;
 }
