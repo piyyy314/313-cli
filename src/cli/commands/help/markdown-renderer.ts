@@ -121,7 +121,12 @@ marked.setOptions({
   mangle: false,
 });
 
-const htmlUnescapes = {
+// Bolt Optimization: Pre-compile module-level regex for unescaping HTML entities
+// in a single pass rather than allocating Object.entries() arrays and instantiating
+// dynamic RegExp objects on every call.
+const HTML_UNESCAPE_RE = /&amp;|&lt;|&gt;|&quot;|&#39;|&#96;|&#x20;/g;
+
+const htmlUnescapes: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
   '&gt;': '>',
@@ -137,11 +142,10 @@ const htmlUnescapes = {
  * @returns {string}
  */
 function unescape(text: string): string {
-  Object.entries(htmlUnescapes).forEach(([escapedChar, unescapedChar]) => {
-    const escapedCharRegExp = new RegExp(escapedChar, 'g');
-    text = text.replace(escapedCharRegExp, unescapedChar);
-  });
-  return text;
+  return text.replace(
+    HTML_UNESCAPE_RE,
+    (match) => htmlUnescapes[match] ?? match,
+  );
 }
 
 export function renderMarkdown(markdown: string): string {
