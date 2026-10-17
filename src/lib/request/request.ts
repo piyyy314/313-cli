@@ -42,6 +42,27 @@ export function sanitizePayloadForLog(payload: Payload): Payload {
     }
     sanitized.headers = headers;
   }
+  if (sanitized.qs && typeof sanitized.qs === 'object') {
+    const sensitiveKeys = [
+      'auth',
+      'key',
+      'token',
+      'secret',
+      'password',
+      'cookie',
+      'apikey',
+      'credential',
+      'code',
+    ];
+    const qs: Record<string, any> = { ...sanitized.qs };
+    for (const key of Object.keys(qs)) {
+      const lowerKey = key.toLowerCase();
+      if (sensitiveKeys.some((s) => lowerKey.includes(s))) {
+        qs[key] = '[REDACTED]';
+      }
+    }
+    sanitized.qs = qs;
+  }
   return sanitized;
 }
 

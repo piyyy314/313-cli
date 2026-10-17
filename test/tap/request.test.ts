@@ -445,7 +445,7 @@ test('request rejects if needle fails', (t) => {
     });
 });
 
-test('sanitizePayloadForLog redacts sensitive headers and URL credentials', (t) => {
+test('sanitizePayloadForLog redacts sensitive headers, URL credentials, and query objects', (t) => {
   const payload = {
     url: 'https://admin:secretpass@api.snyk.io/v1?token=secret123',
     headers: {
@@ -455,6 +455,11 @@ test('sanitizePayloadForLog redacts sensitive headers and URL credentials', (t) 
       cookie: 'session_id=12345',
       'content-type': 'application/json',
     },
+    qs: {
+      token: 'secret123',
+      apiKey: 'key456',
+      org: 'snyk-dev',
+    },
   };
   const sanitized = request.sanitizePayloadForLog(payload);
   t.equal(sanitized.headers.authorization, '[REDACTED]');
@@ -462,13 +467,21 @@ test('sanitizePayloadForLog redacts sensitive headers and URL credentials', (t) 
   t.equal(sanitized.headers['session-token'], '[REDACTED]');
   t.equal(sanitized.headers.cookie, '[REDACTED]');
   t.equal(sanitized.headers['content-type'], 'application/json');
+  t.equal(sanitized.qs.token, '[REDACTED]');
+  t.equal(sanitized.qs.apiKey, '[REDACTED]');
+  t.equal(sanitized.qs.org, 'snyk-dev');
   t.ok(!sanitized.url.includes('admin'));
   t.ok(!sanitized.url.includes('secretpass'));
   t.ok(!sanitized.url.includes('secret123'));
   t.equal(
     payload.headers.authorization,
     'token secret123',
-    'original payload is untouched',
+    'original payload headers are untouched',
+  );
+  t.equal(
+    payload.qs.token,
+    'secret123',
+    'original payload qs is untouched',
   );
   t.end();
 });
