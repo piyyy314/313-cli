@@ -282,13 +282,24 @@ function constructUpgradesText(
   return upgradeTextArray;
 }
 
+// Bolt Optimization: Early-exit helper to check for own properties without Object.keys() array allocations.
+function hasKeys(obj: object): boolean {
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function constructPinText(
   pins: DependencyPins,
   upgradesByAffected: UpgradesByAffectedPackage, // classical "remediation via top-level dep" upgrades
   basicVulnInfo: Record<string, BasicVulnInfo>,
   testOptions: TestOptions,
 ): string[] {
-  if (!Object.keys(pins).length) {
+  // Bolt Optimization: Use O(1) early-exit `hasKeys` check instead of `Object.keys().length`.
+  if (!hasKeys(pins)) {
     return [];
   }
 
@@ -297,11 +308,21 @@ function constructPinText(
     chalk.bold.green('\nIssues to fix by upgrading dependencies:'),
   );
 
-  // First, direct upgrades
+  // Bolt Optimization: Partition pins into direct upgrades (upgradeables) and transitive pins (pinables)
+  // in a single pass over `pins` rather than allocating multiple intermediate arrays via Object.keys().filter().
+  const upgradeables: string[] = [];
+  const pinables: string[] = [];
+  for (const name in pins) {
+    if (Object.prototype.hasOwnProperty.call(pins, name)) {
+      if (pins[name].isTransitive) {
+        pinables.push(name);
+      } else {
+        upgradeables.push(name);
+      }
+    }
+  }
 
-  const upgradeables = Object.keys(pins).filter(
-    (name) => !pins[name].isTransitive,
-  );
+  // First, direct upgrades
   if (upgradeables.length) {
     processUpgrades(
       upgradeTextArray,
@@ -313,7 +334,6 @@ function constructPinText(
   }
 
   // Second, pins
-  const pinables = Object.keys(pins).filter((name) => pins[name].isTransitive);
 
   if (pinables.length) {
     for (const pkgName of pinables) {
