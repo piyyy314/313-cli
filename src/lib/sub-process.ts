@@ -26,6 +26,10 @@ export function execute(
       });
     }
 
+    proc.on('error', (err) => {
+      reject(err);
+    });
+
     proc.on('close', (code) => {
       if (code !== 0) {
         return reject(stdout || stderr);
