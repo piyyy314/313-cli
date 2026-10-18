@@ -286,9 +286,13 @@ export function filterOutProcessedWorkspaces(
 ) {
   const targetFiles: string[] = [];
 
-  const scanned = scannedProjects
-    .map((p) => p.targetFile!)
-    .map((p) => pathLib.resolve(process.cwd(), root, p));
+  // Bolt Optimization: Construct a Set of resolved scanned project target file paths to allow O(1)
+  // lookups via .has() instead of O(N) array scans via .includes(), reducing filtering complexity from O(N * M) to O(N + M).
+  const scanned = new Set(
+    scannedProjects
+      .map((p) => p.targetFile!)
+      .map((p) => pathLib.resolve(process.cwd(), root, p)),
+  );
   const all = allTargetFiles.map((p) => ({
     path: pathLib.resolve(process.cwd(), root, p),
     original: p,
@@ -304,7 +308,7 @@ export function filterOutProcessedWorkspaces(
     }
     // standardise to package.json
     // we discover the lockfiles but targetFile is package.json
-    if (!scanned.includes(path.replace(lockFile, 'package.json'))) {
+    if (!scanned.has(path.replace(lockFile, 'package.json'))) {
       targetFiles.push(original);
       continue;
     }
