@@ -24,6 +24,16 @@ import { PATH_SEPARATOR } from '../constants';
 import { getSeverityValue } from './get-severity-value';
 import { getVulnerabilityUrl } from './get-vuln-url';
 
+// Helper to check if an object has any own enumerable keys without allocating an array
+function hasKeys(obj: object): boolean {
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function formatIssuesWithRemediation(
   vulns: GroupedVuln[],
   remediationInfo: RemediationChanges,
@@ -62,18 +72,27 @@ export function formatIssuesWithRemediation(
   const results = [''];
 
   let upgradeTextArray: string[];
-  if (remediationInfo.pin && Object.keys(remediationInfo.pin).length) {
+  if (remediationInfo.pin && hasKeys(remediationInfo.pin)) {
     const upgradesByAffected: UpgradesByAffectedPackage = {};
-    for (const topLevelPkg of Object.keys(remediationInfo.upgrade)) {
-      for (const targetPkgStr of remediationInfo.upgrade[topLevelPkg]
-        .upgrades) {
-        if (!upgradesByAffected[targetPkgStr]) {
-          upgradesByAffected[targetPkgStr] = [];
+    if (remediationInfo.upgrade) {
+      for (const topLevelPkg in remediationInfo.upgrade) {
+        if (
+          Object.prototype.hasOwnProperty.call(
+            remediationInfo.upgrade,
+            topLevelPkg,
+          )
+        ) {
+          for (const targetPkgStr of remediationInfo.upgrade[topLevelPkg]
+            .upgrades) {
+            if (!upgradesByAffected[targetPkgStr]) {
+              upgradesByAffected[targetPkgStr] = [];
+            }
+            upgradesByAffected[targetPkgStr].push({
+              name: topLevelPkg,
+              version: remediationInfo.upgrade[topLevelPkg].upgradeTo,
+            });
+          }
         }
-        upgradesByAffected[targetPkgStr].push({
-          name: topLevelPkg,
-          version: remediationInfo.upgrade[topLevelPkg].upgradeTo,
-        });
       }
     }
     upgradeTextArray = constructPinText(
@@ -83,9 +102,11 @@ export function formatIssuesWithRemediation(
       options,
     );
     const allVulnIds = new Set();
-    Object.keys(remediationInfo.pin).forEach((name) =>
-      remediationInfo.pin[name].vulns.forEach((vid) => allVulnIds.add(vid)),
-    );
+    for (const name in remediationInfo.pin) {
+      if (Object.prototype.hasOwnProperty.call(remediationInfo.pin, name)) {
+        remediationInfo.pin[name].vulns.forEach((vid) => allVulnIds.add(vid));
+      }
+    }
     remediationInfo.unresolved = remediationInfo.unresolved.filter(
       (issue) => !allVulnIds.has(issue.id),
     );
@@ -138,13 +159,16 @@ function constructLicenseText(
   },
   testOptions: TestOptions,
 ): string[] {
-  if (!(Object.keys(basicLicenseInfo).length > 0)) {
+  if (!hasKeys(basicLicenseInfo)) {
     return [];
   }
 
   const licenseTextArray = [chalk.bold.green('\nLicense issues:')];
 
-  for (const id of Object.keys(basicLicenseInfo)) {
+  for (const id in basicLicenseInfo) {
+    if (!Object.prototype.hasOwnProperty.call(basicLicenseInfo, id)) {
+      continue;
+    }
     const licenseText = formatIssue({
       id,
       title: basicLicenseInfo[id].title,
@@ -172,11 +196,14 @@ function constructPatchesText(
   },
   testOptions: TestOptions,
 ): string[] {
-  if (!(Object.keys(patches).length > 0)) {
+  if (!hasKeys(patches)) {
     return [];
   }
   const patchedTextArray = [chalk.bold.green('\nPatchable issues:')];
-  for (const id of Object.keys(patches)) {
+  for (const id in patches) {
+    if (!Object.prototype.hasOwnProperty.call(patches, id)) {
+      continue;
+    }
     if (!basicVulnInfo[id]) {
       continue;
     }
@@ -267,15 +294,21 @@ function constructUpgradesText(
   },
   testOptions: TestOptions,
 ): string[] {
-  if (!(Object.keys(upgrades).length > 0)) {
+  if (!hasKeys(upgrades)) {
     return [];
   }
 
   const upgradeTextArray = [chalk.bold.green('\nIssues to fix by upgrading:')];
+  const upgradeKeys: string[] = [];
+  for (const key in upgrades) {
+    if (Object.prototype.hasOwnProperty.call(upgrades, key)) {
+      upgradeKeys.push(key);
+    }
+  }
   processUpgrades(
     upgradeTextArray,
     upgrades,
-    Object.keys(upgrades),
+    upgradeKeys,
     basicVulnInfo,
     testOptions,
   );
@@ -288,7 +321,7 @@ function constructPinText(
   basicVulnInfo: Record<string, BasicVulnInfo>,
   testOptions: TestOptions,
 ): string[] {
-  if (!Object.keys(pins).length) {
+  if (!hasKeys(pins)) {
     return [];
   }
 
@@ -297,11 +330,20 @@ function constructPinText(
     chalk.bold.green('\nIssues to fix by upgrading dependencies:'),
   );
 
-  // First, direct upgrades
+  // Partition direct upgrades and transitive pins in a single pass
+  const upgradeables: string[] = [];
+  const pinables: string[] = [];
+  for (const name in pins) {
+    if (Object.prototype.hasOwnProperty.call(pins, name)) {
+      if (pins[name].isTransitive) {
+        pinables.push(name);
+      } else {
+        upgradeables.push(name);
+      }
+    }
+  }
 
-  const upgradeables = Object.keys(pins).filter(
-    (name) => !pins[name].isTransitive,
-  );
+  // First, direct upgrades
   if (upgradeables.length) {
     processUpgrades(
       upgradeTextArray,
@@ -313,7 +355,6 @@ function constructPinText(
   }
 
   // Second, pins
-  const pinables = Object.keys(pins).filter((name) => pins[name].isTransitive);
 
   if (pinables.length) {
     for (const pkgName of pinables) {
