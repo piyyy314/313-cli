@@ -19,6 +19,14 @@ const LOCK_FILES_TO_MANIFEST_MAP = {
   'poetry.lock': 'pyproject.toml',
 };
 
+// Bolt: Pre-compile replacement regular expressions at module level to avoid repeated Object.entries allocations and RegExp instantiations on hot paths.
+const LOCK_FILE_REPLACEMENTS = Object.entries(LOCK_FILES_TO_MANIFEST_MAP).map(
+  ([key, replacer]) => ({
+    regex: new RegExp(key, 'g'),
+    replacer,
+  }),
+);
+
 export function createSarifOutputForOpenSource(
   testResults: TestResult[],
 ): sarif.Log {
@@ -58,8 +66,9 @@ export function createSarifOutputForOpenSource(
 
 function replaceLockfileWithManifest(testResult: TestResult): TestResult {
   let targetFile = testResult.displayTargetFile || '';
-  for (const [key, replacer] of Object.entries(LOCK_FILES_TO_MANIFEST_MAP)) {
-    targetFile = targetFile.replace(new RegExp(key, 'g'), replacer);
+  for (let i = 0; i < LOCK_FILE_REPLACEMENTS.length; i++) {
+    const { regex, replacer } = LOCK_FILE_REPLACEMENTS[i];
+    targetFile = targetFile.replace(regex, replacer);
   }
   return {
     ...testResult,

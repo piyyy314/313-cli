@@ -121,6 +121,36 @@ describe('Sanitize args', () => {
     expect(result.token).toEqual('token-set');
     expect(result.self.token).toEqual('token-set');
   });
+
+  it('should obfuscate credentials with delimiter and case variations', () => {
+    const argsWithVariations = {
+      _doubleDashArgs: [],
+      _: ['test'],
+      api_key: 'secret1',
+      API_KEY: 'secret2',
+      clientSecret: 'secret3',
+      client_secret: 'secret4',
+      authorization: 'Bearer secret5',
+      accessToken: 'secret6',
+      refresh_token: 'secret7',
+      secret: 'secret8',
+      credential: 'secret9',
+      TFC_TOKEN: 'secret10',
+    };
+
+    const result = obfuscateArgs(argsWithVariations) as any;
+
+    expect(result.api_key).toEqual('api_key-set');
+    expect(result.API_KEY).toEqual('API_KEY-set');
+    expect(result.clientSecret).toEqual('clientSecret-set');
+    expect(result.client_secret).toEqual('client_secret-set');
+    expect(result.authorization).toEqual('authorization-set');
+    expect(result.accessToken).toEqual('accessToken-set');
+    expect(result.refresh_token).toEqual('refresh_token-set');
+    expect(result.secret).toEqual('secret-set');
+    expect(result.credential).toEqual('credential-set');
+    expect(result.TFC_TOKEN).toEqual('TFC_TOKEN-set');
+  });
 });
 
 describe('truncateForLog', () => {

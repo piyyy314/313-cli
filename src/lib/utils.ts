@@ -9,7 +9,7 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const SENSITIVE_KEYS = new Set([
+const NORMALIZED_SENSITIVE_KEYS = new Set([
   'username',
   'password',
   'token',
