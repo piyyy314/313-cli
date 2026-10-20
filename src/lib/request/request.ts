@@ -92,11 +92,24 @@ export function sanitizePayloadForLog(payload: Payload): Payload {
     }
     sanitized.headers = headers;
   }
-  if (sanitized.qs && typeof sanitized.qs === 'object') {
-    sanitized.qs = sanitizeObjectForLog(sanitized.qs);
-  }
-  if (sanitized.body) {
-    sanitized.body = sanitizeObjectForLog(sanitized.body);
+  if (sanitized.qs) {
+    const qs: Record<string, any> = { ...sanitized.qs };
+    for (const key of Object.keys(qs)) {
+      const lowerKey = key.toLowerCase();
+      if (
+        lowerKey.includes('auth') ||
+        lowerKey.includes('key') ||
+        lowerKey.includes('token') ||
+        lowerKey.includes('secret') ||
+        lowerKey.includes('password') ||
+        lowerKey.includes('cookie') ||
+        lowerKey.includes('credential') ||
+        lowerKey.includes('code')
+      ) {
+        qs[key] = '[REDACTED]';
+      }
+    }
+    sanitized.qs = qs;
   }
   return sanitized;
 }
