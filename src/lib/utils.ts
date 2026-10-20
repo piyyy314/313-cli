@@ -25,8 +25,11 @@ const NORMALIZED_SENSITIVE_KEYS = new Set([
   'secret',
   'accesstoken',
   'refreshtoken',
-  'credential',
 ]);
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[-_]/g, '');
+}
 
 function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
   if (!obj || typeof obj !== 'object' || visited.has(obj)) {
@@ -35,8 +38,8 @@ function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
   visited.add(obj);
 
   for (const key of Object.keys(obj)) {
-    const normalizedKey = key.toLowerCase().replace(/[-_]/g, '');
-    if (NORMALIZED_SENSITIVE_KEYS.has(normalizedKey)) {
+    const normalizedKey = normalizeKey(key);
+    if (SENSITIVE_KEYS.has(normalizedKey)) {
       if (obj[key] !== undefined && obj[key] !== null) {
         obj[key] = `${key}-set`;
       }

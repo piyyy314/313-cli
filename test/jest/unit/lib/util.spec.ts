@@ -78,9 +78,15 @@ describe('Sanitize args', () => {
       oauthToken: 'oauth-token-456',
       'oauth-token': 'oauth-token-789',
       auth: 'Bearer secret-jwt',
+      SNYK_TOKEN: 'uppercase-token',
+      api_key: 'snake_case_key',
+      ClientSecret: 'pascal_case_secret',
+      Authorization: 'Bearer auth-header',
+      access_token: 'acc-token',
+      refreshToken: 'ref-token',
     };
 
-    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+    const result = obfuscateArgs(argsWithTokens) as any;
 
     expect(result.token).toEqual('token-set');
     expect(result['tfc-token']).toEqual('tfc-token-set');
@@ -94,6 +100,12 @@ describe('Sanitize args', () => {
     expect(result.oauthToken).toEqual('oauthToken-set');
     expect(result['oauth-token']).toEqual('oauth-token-set');
     expect(result.auth).toEqual('auth-set');
+    expect(result.SNYK_TOKEN).toEqual('SNYK_TOKEN-set');
+    expect(result.api_key).toEqual('api_key-set');
+    expect(result.ClientSecret).toEqual('ClientSecret-set');
+    expect(result.Authorization).toEqual('Authorization-set');
+    expect(result.access_token).toEqual('access_token-set');
+    expect(result.refreshToken).toEqual('refreshToken-set');
   });
 
   it('should handle cyclic references gracefully without infinite loops', () => {
