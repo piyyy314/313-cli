@@ -21,6 +21,56 @@ const snykDebug = debugModule('snyk');
 
 declare const global: Global;
 
+const SENSITIVE_SUBSTRINGS = [
+  'auth',
+  'key',
+  'token',
+  'secret',
+  'password',
+  'cookie',
+  'apikey',
+  'credential',
+];
+
+function isSensitiveKey(key: string): boolean {
+  const lowerKey = key.toLowerCase();
+  if (
+    lowerKey === 'code' ||
+    lowerKey === 'passcode' ||
+    lowerKey === 'auth_code' ||
+    lowerKey === 'authcode'
+  ) {
+    return true;
+  }
+  return SENSITIVE_SUBSTRINGS.some((s) => lowerKey.includes(s));
+}
+
+export function sanitizeObjectForLog(obj: any, visited = new WeakSet()): any {
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
+  if (visited.has(obj)) {
+    return '[CIRCULAR]';
+  }
+  visited.add(obj);
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeObjectForLog(item, visited));
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    if (isSensitiveKey(key)) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      sanitized[key] = sanitizeObjectForLog(obj[key], visited);
+    } else {
+      sanitized[key] = obj[key];
+    }
+  }
+  return sanitized;
+}
+
 export function sanitizePayloadForLog(payload: Payload): Payload {
   if (!payload) return payload;
   const sanitized = { ...payload };
@@ -71,20 +121,8 @@ export function sanitizeUrlForLog(urlStr: string): string {
       parsed.username = 'REDACTED';
       parsed.password = 'REDACTED';
     }
-    const sensitiveKeys = [
-      'auth',
-      'key',
-      'token',
-      'secret',
-      'password',
-      'cookie',
-      'apikey',
-      'credential',
-      'code',
-    ];
     for (const paramKey of Array.from(parsed.searchParams.keys())) {
-      const lowerKey = paramKey.toLowerCase();
-      if (sensitiveKeys.some((s) => lowerKey.includes(s))) {
+      if (isSensitiveKey(paramKey)) {
         parsed.searchParams.set(paramKey, '[REDACTED]');
       }
     }
@@ -123,7 +161,8 @@ function setupRequest(payload: Payload) {
     debug('compressing request body');
     const json = JSON.stringify(body);
     if (json.length < 1e4) {
-      debug(json);
+      const sanitizedBody = sanitizeObjectForLog(body);
+      debug(jsonStringifyLargeObject(sanitizedBody));
     }
 
     // always compress going upstream

@@ -38,5 +38,13 @@ export const ciEnvs = new Set([
 ]);
 
 export function isCI(): boolean {
-  return Object.keys(process.env).some((key) => ciEnvs.has(key));
+  // Bolt Optimization: Iterate directly over the `ciEnvs` set checking `process.env[envVar] !== undefined`
+  // instead of calling `Object.keys(process.env)`. This avoids allocating an array of environment key strings
+  // on every invocation and reduces checking complexity from O(E) to O(1) with early exit.
+  for (const envVar of ciEnvs) {
+    if (process.env[envVar] !== undefined) {
+      return true;
+    }
+  }
+  return false;
 }

@@ -489,6 +489,48 @@ test('sanitizeUrlForLog redacts credentials and sensitive query parameters in UR
   t.end();
 });
 
+test('sanitizePayloadForLog redacts sensitive properties in qs and body', (t) => {
+  const payload = {
+    url: 'https://api.snyk.io/v1',
+    qs: {
+      api_key: 'secret123',
+      normal_param: 'value1',
+    },
+    body: {
+      password: 'mypassword',
+      nested: {
+        token: 'secrettoken',
+        safeField: 'hello',
+      },
+      arrayField: [{ secret: 'arraysecret' }],
+    },
+  };
+  const sanitized = request.sanitizePayloadForLog(payload);
+  t.equal(sanitized.qs.api_key, '[REDACTED]');
+  t.equal(sanitized.qs.normal_param, 'value1');
+  t.equal(sanitized.body.password, '[REDACTED]');
+  t.equal(sanitized.body.nested.token, '[REDACTED]');
+  t.equal(sanitized.body.nested.safeField, 'hello');
+  t.equal(sanitized.body.arrayField[0].secret, '[REDACTED]');
+  t.end();
+});
+
+test('sanitizePayloadForLog does not redact non-sensitive fields containing code like statusCode or errorCode', (t) => {
+  const payload = {
+    url: 'https://api.snyk.io/v1',
+    body: {
+      statusCode: 200,
+      errorCode: 'ERR_NOT_FOUND',
+      code: 'secret_oauth_code',
+    },
+  };
+  const sanitized = request.sanitizePayloadForLog(payload);
+  t.equal(sanitized.body.statusCode, 200);
+  t.equal(sanitized.body.errorCode, 'ERR_NOT_FOUND');
+  t.equal(sanitized.body.code, '[REDACTED]');
+  t.end();
+});
+
 test('request calls needle as expected and will not update HTTP to HTTPS if envvar is set', (t) => {
   process.env.SNYK_HTTP_PROTOCOL_UPGRADE = '0';
   needleStub.yields(null, { statusCode: 200 }, 'text');

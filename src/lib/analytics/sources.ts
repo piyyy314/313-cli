@@ -156,12 +156,12 @@ export function validateHomebrew(snykExecutablePath: string): boolean {
   return false;
 }
 
-// Use execFile with discrete argument arrays to prevent OS command injection
-function runCommand(cmd: string, args: string[]): Promise<string> {
+// Security enhancement: Use execFile with discrete argument arrays to prevent command injection
+function runCommand(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, (error, stdout, stderr) => {
+    execFile(file, args, (error, stdout, stderr) => {
       if (error) {
-        debug("Error trying to get program's version", error);
+        debug("Error executing command", error);
         return reject(error);
       }
       return resolve(stdout ? stdout : stderr);
@@ -171,17 +171,17 @@ function runCommand(cmd: string, args: string[]): Promise<string> {
 
 export async function isInstalled(commandToCheck: string): Promise<boolean> {
   let whichCommand = 'which';
-  let args = [commandToCheck];
+  let whichArgs = [commandToCheck];
   const os = process.platform;
   if (os === 'win32') {
     whichCommand = 'where';
   } else if (os === 'android') {
     whichCommand = 'adb';
-    args = ['shell', 'which', commandToCheck];
+    whichArgs = ['shell', 'which', commandToCheck];
   }
 
   try {
-    await runCommand(whichCommand, args);
+    await runCommand(whichCommand, whichArgs);
   } catch (error) {
     return false;
   }

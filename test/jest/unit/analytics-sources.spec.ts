@@ -1,3 +1,4 @@
+import * as childProcess from 'child_process';
 import * as fs from 'fs';
 import {
   getIntegrationEnvironment,
@@ -208,13 +209,36 @@ describe('getIntegrationEnvironmentVersion', () => {
 });
 
 describe('isInstalled', () => {
-  it('returns true for installed command', async () => {
-    const installed = await isInstalled('node');
-    expect(installed).toBe(true);
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
-  it('returns false for non-existent command', async () => {
-    const installed = await isInstalled('non_existent_binary_xyz_123');
-    expect(installed).toBe(false);
+  it('returns true when command is found using execFile with discrete arguments', async () => {
+    const execFileSpy = jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(null, '/usr/bin/git', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('git');
+    expect(result).toBe(true);
+    expect(execFileSpy).toHaveBeenCalledWith(
+      process.platform === 'win32' ? 'where' : 'which',
+      ['git'],
+      expect.any(Function),
+    );
+  });
+
+  it('returns false when command is not found or fails', async () => {
+    jest
+      .spyOn(childProcess, 'execFile')
+      .mockImplementation((file, args, callback: any) => {
+        callback(new Error('not found'), '', '');
+        return {} as any;
+      });
+
+    const result = await isInstalled('nonexistent-binary');
+    expect(result).toBe(false);
   });
 });
