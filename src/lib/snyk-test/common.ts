@@ -43,6 +43,18 @@ function getWorkspaceInfo(
   return undefined;
 }
 
+/**
+ * Helper to perform an O(1) property check without allocating key arrays via Object.keys().
+ */
+function hasKeys(obj: object): boolean {
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function assembleQueryString(options) {
   const org = options.org || config.org || null;
   const qs: {
@@ -60,7 +72,9 @@ export function assembleQueryString(options) {
     qs.ignorePolicy = true;
   }
 
-  return Object.keys(qs).length !== 0 ? qs : null;
+  // Bolt Optimization: Use O(1) early-exit `hasKeys` helper instead of `Object.keys().length !== 0`
+  // to avoid allocating temporary key arrays on frequent query string assembly calls.
+  return hasKeys(qs) ? qs : null;
 }
 
 export enum SEVERITY {
