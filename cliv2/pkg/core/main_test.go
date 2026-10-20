@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,9 +13,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/rs/zerolog"
-	catalogcli "github.com/snyk/error-catalog-golang-public/cli"
+	"github.com/snyk/cli-extension-dep-graph/v2/pkg/ecosystems/orchestrator"
 	"github.com/snyk/error-catalog-golang-public/code"
-	"github.com/snyk/error-catalog-golang-public/snyk"
 	"github.com/snyk/error-catalog-golang-public/snyk_errors"
 	"github.com/snyk/go-application-framework/pkg/analytics"
 	"github.com/snyk/go-application-framework/pkg/apiclients/testapi"
@@ -29,7 +27,6 @@ import (
 	"github.com/snyk/go-application-framework/pkg/logging"
 	"github.com/snyk/go-application-framework/pkg/mocks"
 	"github.com/snyk/go-application-framework/pkg/networking"
-	"github.com/snyk/go-application-framework/pkg/ui/consoleui"
 	"github.com/snyk/go-application-framework/pkg/utils/ufm"
 	"github.com/snyk/go-application-framework/pkg/workflow"
 	"github.com/spf13/cobra"
@@ -37,7 +34,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior"
 	"github.com/snyk/cli/cliv2/internal/helpdocs"
 	"github.com/snyk/cli/cliv2/internal/helprouting"
 
@@ -56,27 +52,48 @@ func cleanup() {
 func Test_configureSarifEqualJSON_IncludesHTMLFileWriter(t *testing.T) {
 	config := configuration.NewWithOpts()
 
-	configureSarifEqualJSON(config, nil)
+	configureSarifEqualJSON(config)
 
 	writers, ok := config.Get(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS).([]output_workflow.FileWriter)
 	require.True(t, ok)
-	require.Len(t, writers, 4)
+	require.Len(t, writers, 3)
 	assert.Equal(t, output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE, writers[2].NameConfigKey)
 	assert.Equal(t, output_workflow.HTML_MIME_TYPE, writers[2].MimeType)
 	assert.Empty(t, writers[2].TemplateFiles)
 }
 
-func Test_configureSarifEqualJSON_IncludesTOONFileWriter(t *testing.T) {
-	config := configuration.NewWithOpts()
+func Test_enableUfmForHtmlOutput(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected bool
+	}{
+		{name: "no html flags", args: []string{}, expected: false},
+		{name: "--html", args: []string{"--html"}, expected: true},
+		{name: "--html=false", args: []string{"--html=false"}, expected: false},
+		{name: "--html-file-output", args: []string{"--html-file-output=report.html"}, expected: true},
+		{name: "--json", args: []string{"--json"}, expected: false},
+	}
 
-	configureSarifEqualJSON(config, nil)
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := configuration.NewWithOpts()
+			flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			flags.Bool(output_workflow.OUTPUT_CONFIG_KEY_HTML, false, "")
+			flags.String(output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE, "", "")
+			flags.Bool(output_workflow.OUTPUT_CONFIG_KEY_JSON, false, "")
+			require.NoError(t, flags.Parse(tc.args))
 
-	writers, ok := config.Get(output_workflow.OUTPUT_CONFIG_KEY_FILE_WRITERS).([]output_workflow.FileWriter)
-	require.True(t, ok)
-	require.Len(t, writers, 4)
-	assert.Equal(t, output_workflow.OUTPUT_CONFIG_KEY_TOON_FILE, writers[3].NameConfigKey)
-	assert.Equal(t, output_workflow.TOON_MIME_TYPE, writers[3].MimeType)
-	assert.Empty(t, writers[3].TemplateFiles)
+			enableUfmForHtmlOutput(config, flags)
+
+			assert.Equal(t, tc.expected, config.IsSet(orchestrator.FlagUnifiedTestAPIOsCLI.Key))
+			assert.Equal(t, tc.expected, config.IsSet(codeUseUfmConfigKey))
+			if tc.expected {
+				assert.True(t, config.GetBool(orchestrator.FlagUnifiedTestAPIOsCLI.Key))
+				assert.True(t, config.GetBool(codeUseUfmConfigKey))
+			}
+		})
+	}
 }
 
 func Test_mainWithErrorCode(t *testing.T) {
@@ -134,6 +151,24 @@ func Test_populateRedactionTerms_excludesClientMachineId(t *testing.T) {
 	terms := populateRedactionTerms(config, mockEngine)
 
 	assert.NotContains(t, terms, machineId, "client machine id must never be swept into REDACTION_TERMS, or the analytics scrub chokepoint strips it right back out of its own extension")
+}
+
+func Test_populateRedactionTerms_excludesIntegrationDetails(t *testing.T) {
+	mockController := gomock.NewController(t)
+	mockEngine := mocks.NewMockEngine(mockController)
+	mockEngine.EXPECT().GetWorkflows().Return(nil)
+
+	config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
+	t.Setenv("SNYK_INTEGRATION_NAME", "custom-integration")
+	t.Setenv("SNYK_INTEGRATION_VERSION", "custom-version")
+	t.Setenv("SNYK_INTEGRATION_ENVIRONMENT", "custom-environment")
+	t.Setenv("SNYK_INTEGRATION_ENVIRONMENT_VERSION", "custom-environment-version")
+
+	terms := populateRedactionTerms(config, mockEngine)
+
+	for _, term := range []string{"custom-integration", "custom-version", "custom-environment", "custom-environment-version"} {
+		assert.NotContains(t, terms, term)
+	}
 }
 
 func Test_populateRedactionTerms_excludesDetectedAgent(t *testing.T) {
@@ -763,120 +798,6 @@ func Test_displayError(t *testing.T) {
 		config := configuration.NewWithOpts(configuration.WithAutomaticEnv())
 		displayError(err, userInterface, config, t.Context(), false)
 	})
-
-	t.Run("renders supported catalog errors as TOON without diagnostics", func(t *testing.T) {
-		tests := []struct {
-			name string
-			err  error
-		}{
-			{name: "scan", err: catalogcli.NewNoSupportedFilesFoundError("scan failed")},
-			{name: "authentication", err: snyk.NewUnauthorisedError("authentication failed")},
-		}
-
-		for _, tt := range tests {
-			t.Run(tt.name, func(t *testing.T) {
-				var stdout bytes.Buffer
-				var stderr bytes.Buffer
-				console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
-				config := configuration.NewWithOpts()
-				config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
-				config.Set(configuration.INPUT_DIRECTORY, "/workspace")
-
-				displayError(tt.err, console, config, t.Context(), false)
-
-				expected := fmt.Sprintf("error: %s\npath: /workspace\n", getErrorMessage(tt.err))
-				assert.Equal(t, expected, stdout.String())
-				assert.Empty(t, stderr.String())
-			})
-		}
-	})
-
-	t.Run("preserves JSON error output", func(t *testing.T) {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
-		config := configuration.NewWithOpts()
-		config.Set(output_workflow.OUTPUT_CONFIG_KEY_JSON, true)
-		config.Set(configuration.INPUT_DIRECTORY, "/workspace")
-
-		displayError(catalogcli.NewNoSupportedFilesFoundError("scan failed"), console, config, t.Context(), false)
-
-		assert.JSONEq(t, `{"ok":false,"error":"scan failed","path":"/workspace"}`, stdout.String())
-		assert.Empty(t, stderr.String())
-	})
-
-	t.Run("keeps data rendering errors on stderr", func(t *testing.T) {
-		var stdout bytes.Buffer
-		var stderr bytes.Buffer
-		console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(&stderr))
-		config := configuration.NewWithOpts()
-		config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
-
-		displayError(catalogcli.NewDataRenderingError("render failed"), console, config, t.Context(), false)
-
-		assert.Empty(t, stdout.String())
-		assert.Contains(t, stderr.String(), "render failed")
-	})
-
-	t.Run("reports TOON output failures as diagnostics", func(t *testing.T) {
-		err := catalogcli.NewNoSupportedFilesFoundError("scan failed")
-		userInterface.EXPECT().Output(gomock.Any()).Return(assert.AnError).Times(1)
-		userInterface.EXPECT().OutputError(assert.AnError).Return(nil).Times(1)
-
-		config := configuration.NewWithOpts()
-		config.Set(output_workflow.OUTPUT_CONFIG_KEY_TOON, true)
-		displayError(err, userInterface, config, t.Context(), false)
-	})
-}
-
-// Test_displayError_errorStreamSelection wires displayError to the same
-// behavior.SelectErrorOutputWriter used by runMainWorkflow, so it catches
-// regressions in that stream selection rather than a copy of its logic.
-// It's the regression test for CLI-1828: `snyk test --html > out.html`
-// must not leak errors into the redirected file.
-func Test_displayError_errorStreamSelection(t *testing.T) {
-	for _, tc := range []struct {
-		name       string
-		formats    []string
-		wantStderr bool
-	}{
-		{"no format flags", nil, false},
-		{"json alone", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON}, false},
-		{"toon alone", []string{output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
-		{"sarif alone", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF}, true},
-		{"html alone", []string{output_workflow.OUTPUT_CONFIG_KEY_HTML}, true},
-		{"json + sarif", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_SARIF}, false},
-		{"json + html", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_HTML}, false},
-		{"json + toon", []string{output_workflow.OUTPUT_CONFIG_KEY_JSON, output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
-		{"sarif + html", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF, output_workflow.OUTPUT_CONFIG_KEY_HTML}, true},
-		{"sarif + toon", []string{output_workflow.OUTPUT_CONFIG_KEY_SARIF, output_workflow.OUTPUT_CONFIG_KEY_TOON}, false},
-		{"toon + html", []string{output_workflow.OUTPUT_CONFIG_KEY_TOON, output_workflow.OUTPUT_CONFIG_KEY_HTML}, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			config := configuration.NewWithOpts()
-			for _, format := range tc.formats {
-				config.Set(format, true)
-			}
-
-			err := catalogcli.NewNoSupportedFilesFoundError("scan failed")
-
-			var stdout, stderr bytes.Buffer
-			errorWriter := behavior.SelectErrorOutputWriter(config, &stdout, &stderr)
-			console := consoleui.New(consoleui.WithOutput(&stdout), consoleui.WithErrorOutput(errorWriter))
-
-			displayError(err, console, config, t.Context(), false)
-
-			message := getErrorMessage(err)
-			if tc.wantStderr {
-				// OutputError wraps text at a fixed width, so collapse whitespace before matching.
-				assert.Contains(t, strings.Join(strings.Fields(stderr.String()), " "), message)
-				assert.Empty(t, stdout.String())
-			} else {
-				assert.Contains(t, stdout.String(), message)
-				assert.Empty(t, stderr.String())
-			}
-		})
-	}
 }
 
 func Test_doctorTip(t *testing.T) {

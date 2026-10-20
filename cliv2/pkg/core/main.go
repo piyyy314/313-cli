@@ -9,6 +9,7 @@ import (
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +21,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
+	"github.com/snyk/cli-extension-dep-graph/v2/pkg/ecosystems/orchestrator"
 	"github.com/snyk/error-catalog-golang-public/cli"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -32,7 +34,6 @@ import (
 	"github.com/snyk/go-application-framework/pkg/instrumentation"
 	"github.com/snyk/go-application-framework/pkg/logging"
 
-	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior"
 	"github.com/snyk/cli/cliv2/cmd/cliv2/behavior/legacy"
 	"github.com/snyk/cli/cliv2/internal/cliv2"
 	"github.com/snyk/cli/cliv2/internal/constants"
@@ -103,7 +104,15 @@ const (
 	integrationNameFlag       string = "integration-name"
 	maxNetworkRequestAttempts string = "max-attempts"
 	teardownTimeout                  = 5 * time.Second
+	// codeUseUfmConfigKey mirrors code_workflow.ConfigurationUseUFM, which code-client-go keeps in an internal package
+	codeUseUfmConfigKey string = "internal_code_use_ufm"
 )
+
+type JsonErrorStruct struct {
+	Ok       bool   `json:"ok"`
+	ErrorMsg string `json:"error"`
+	Path     string `json:"path"`
+}
 
 type HandleError int
 
@@ -187,11 +196,12 @@ func runMainWorkflow(config configuration.Configuration, cmd *cobra.Command, arg
 	}
 
 	// init UI
-	errorUI := consoleui.WithErrorOutput(behavior.SelectErrorOutputWriter(config, os.Stdout, os.Stderr))
+	errorUI := consoleui.WithErrorOutput(os.Stdout)
+	if output_workflow.DefaultOutputIsStructured(config) {
+		errorUI = consoleui.WithErrorOutput(os.Stderr)
+	}
 	mainUI := consoleui.New(consoleui.WithInput(os.Stdin), consoleui.WithOutput(os.Stdout), consoleui.WithProgressWriter(os.Stderr), errorUI)
 	globalEngine.SetUserInterface(mainUI)
-
-	updateConfigFromParameter(config, args, rawArgs)
 
 	// global handling of experimental commands
 	if config_utils.IsExperimental(cmd.Flags()) {
@@ -199,6 +209,8 @@ func runMainWorkflow(config configuration.Configuration, cmd *cobra.Command, arg
 			return cli.NewCommandIsExperimentalError(getFullCommandString(cmd))
 		}
 	}
+
+	updateConfigFromParameter(config, args, rawArgs)
 
 	name := getFullCommandString(cmd)
 	globalLogger.Print("Running ", name)
@@ -251,37 +263,32 @@ func runLegacyHelp() error {
 	return defaultCmd(append(filteredArgs, "--help"))
 }
 
-func runTestCommandWithSarifEqualJson(cmd *cobra.Command, args []string, templateFiles []string) error {
-	configureSarifEqualJSON(globalConfiguration, templateFiles)
+func runTestCommandWithSarifEqualJson(cmd *cobra.Command, args []string) error {
+	configureSarifEqualJSON(globalConfiguration)
 	return runCommand(cmd, args)
 }
 
-func configureSarifEqualJSON(config configuration.Configuration, templateFiles []string) {
+func configureSarifEqualJSON(config configuration.Configuration) {
 	// ensure legacy behavior, where sarif and json can be used interchangeably
 	config.AddAlternativeKeys(output_workflow.OUTPUT_CONFIG_KEY_SARIF, []string{output_workflow.OUTPUT_CONFIG_KEY_JSON})
 
+	// TemplateFiles stay empty so the output workflow picks the templates matching the data model (LFM or UFM)
 	fileWriters := []output_workflow.FileWriter{
 		{
 			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_SARIF_FILE,
 			MimeType:          output_workflow.SARIF_MIME_TYPE,
-			TemplateFiles:     templateFiles,
+			TemplateFiles:     nil,
 			WriteEmptyContent: true,
 		},
 		{
 			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_JSON_FILE,
 			MimeType:          output_workflow.SARIF_MIME_TYPE,
-			TemplateFiles:     templateFiles,
+			TemplateFiles:     nil,
 			WriteEmptyContent: false,
 		},
 		{
 			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE,
 			MimeType:          output_workflow.HTML_MIME_TYPE,
-			TemplateFiles:     nil,
-			WriteEmptyContent: true,
-		},
-		{
-			NameConfigKey:     output_workflow.OUTPUT_CONFIG_KEY_TOON_FILE,
-			MimeType:          output_workflow.TOON_MIME_TYPE,
 			TemplateFiles:     nil,
 			WriteEmptyContent: true,
 		},
@@ -295,12 +302,37 @@ func configureSarifEqualJSON(config configuration.Configuration, templateFiles [
 	config.Set(output_workflow.OUTPUT_CONFIG_KEY_DEFAULT_WRITER_LUT, defaultWriterLookup)
 }
 
+// enableUfmForHtmlOutput routes test commands through their UFM producing flows when HTML output is requested,
+// since HTML is only rendered from the unified findings model.
+func enableUfmForHtmlOutput(config configuration.Configuration, flags *pflag.FlagSet) {
+	html, _ := flags.GetBool(output_workflow.OUTPUT_CONFIG_KEY_HTML)
+	htmlFile, _ := flags.GetString(output_workflow.OUTPUT_CONFIG_KEY_HTML_FILE)
+	if !html && htmlFile == "" {
+		return
+	}
+
+	if !config.IsSet(orchestrator.FlagUnifiedTestAPIOsCLI.Key) {
+		config.Set(orchestrator.FlagUnifiedTestAPIOsCLI.Key, true)
+	}
+
+	if !config.IsSet(codeUseUfmConfigKey) {
+		config.Set(codeUseUfmConfigKey, true)
+	}
+}
+
+func runOsTestCommand(cmd *cobra.Command, args []string) error {
+	enableUfmForHtmlOutput(globalConfiguration, cmd.Flags())
+	return runCommand(cmd, args)
+}
+
 func runCodeTestCommand(cmd *cobra.Command, args []string) error {
-	return runTestCommandWithSarifEqualJson(cmd, args, output_workflow.ApplicationSarifTemplates)
+	enableUfmForHtmlOutput(globalConfiguration, cmd.Flags())
+	return runTestCommandWithSarifEqualJson(cmd, args)
 }
 
 func runSecretsTestCommand(cmd *cobra.Command, args []string) error {
-	return runTestCommandWithSarifEqualJson(cmd, args, output_workflow.ApplicationSarifTemplatesUfm)
+	enableUfmForHtmlOutput(globalConfiguration, cmd.Flags())
+	return runTestCommandWithSarifEqualJson(cmd, args)
 }
 
 func runAuthCommand(cmd *cobra.Command, args []string) error {
@@ -382,7 +414,10 @@ func createCommandsForWorkflows(rootCommand *cobra.Command, engine workflow.Engi
 		case "secrets test":
 			// use the special run command to ensure that the non-standard behavior of the command can be kept
 			parentCommand.RunE = runSecretsTestCommand
-		case "test", "monitor":
+		case "test":
+			legacy.SetupTestMonitorCommand(parentCommand)
+			parentCommand.RunE = runOsTestCommand
+		case "monitor":
 			legacy.SetupTestMonitorCommand(parentCommand)
 		case "auth":
 			parentCommand.RunE = runAuthCommand
@@ -470,27 +505,19 @@ func displayError(err error, userInterface ui.UserInterface, config configuratio
 			return
 		}
 
-		outputFormat, structuredOutputSelected := behavior.StructuredErrorOutputFormat(config)
-		if structuredOutputSelected && !behavior.IsDataRenderingError(err) {
+		if config.GetBool(output_workflow.OUTPUT_CONFIG_KEY_JSON) {
 			message := getErrorMessage(err)
 
-			structuredError := behavior.StructuredError{
+			jsonError := JsonErrorStruct{
 				Ok:       false,
 				ErrorMsg: message,
-				Path:     config.GetString(configuration.INPUT_DIRECTORY),
+				Path:     globalConfiguration.GetString(configuration.INPUT_DIRECTORY),
 			}
 
-			output, renderErr := behavior.RenderStructuredError(outputFormat, structuredError)
-			if renderErr != nil {
-				_ = userInterface.OutputError(renderErr)
-				return
-			}
-
+			jsonErrorBuffer, _ := json.MarshalIndent(jsonError, "", "  ")
 			// This document is the command's structured output, so it goes to
 			// stdout; OutputError would route it to stderr in structured mode.
-			if outputErr := userInterface.Output(string(output)); outputErr != nil {
-				_ = userInterface.OutputError(outputErr)
-			}
+			_ = userInterface.Output(string(jsonErrorBuffer))
 		} else {
 			ctx = context.WithValue(ctx, uitypes.ErrorTipKey, doctorTip(isCI))
 			uiError := userInterface.OutputError(err, ui.WithContext(ctx))
@@ -664,8 +691,8 @@ func mainWithErrorCode(additionalExts []workflow.ExtensionInit) int {
 	// We want to scrub the debug log of sensitive information. Since we have a list of commands we know can occur, we can intersect that with arguments we don't recognize, and automatically scrub all those from the logs.
 	if debugEnabled {
 		termsToRedact := populateRedactionTerms(globalConfiguration, globalEngine)
-		writeLogHeader(globalConfiguration, networkAccess)
 		scrubbedLogger.AddTermsToReplace(termsToRedact)
+		writeLogHeader(globalConfiguration, networkAccess)
 	}
 
 	if err != nil {
@@ -742,7 +769,7 @@ func mainWithErrorCode(additionalExts []workflow.ExtensionInit) int {
 // them regardless of whether debug logging is enabled.
 func populateRedactionTerms(config configuration.Configuration, engine workflow.Engine) []string {
 	knownTerms, _ := instrumentation.GetKnownCommandsAndFlags(engine)
-	knownTerms = append(knownTerms, config.GetString(configuration.API_URL), config.GetString(configuration.ORGANIZATION), config.GetString(configuration.ORGANIZATION_SLUG), config.GetString(clientMachineIdConfigKey))
+	knownTerms = append(knownTerms, config.GetString(configuration.API_URL), config.GetString(configuration.ORGANIZATION), config.GetString(configuration.ORGANIZATION_SLUG), config.GetString(configuration.INTEGRATION_NAME), config.GetString(configuration.INTEGRATION_VERSION), config.GetString(configuration.INTEGRATION_ENVIRONMENT), config.GetString(configuration.INTEGRATION_ENVIRONMENT_VERSION), config.GetString(clientMachineIdConfigKey))
 	// AI_AGENT is trusted verbatim by agent.DetectAgent, and persona.Report
 	// falls back to that same raw value whenever the Harness name/version split
 	// or canonicalisation does not apply, so its raw value needs the same

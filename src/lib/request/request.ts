@@ -21,9 +21,62 @@ const snykDebug = debugModule('snyk');
 
 declare const global: Global;
 
+const SENSITIVE_SUBSTRINGS = [
+  'auth',
+  'key',
+  'token',
+  'secret',
+  'password',
+  'cookie',
+  'apikey',
+  'credential',
+];
+
+function isSensitiveKey(key: string): boolean {
+  const lowerKey = key.toLowerCase();
+  if (
+    lowerKey === 'code' ||
+    lowerKey === 'passcode' ||
+    lowerKey === 'auth_code' ||
+    lowerKey === 'authcode'
+  ) {
+    return true;
+  }
+  return SENSITIVE_SUBSTRINGS.some((s) => lowerKey.includes(s));
+}
+
+export function sanitizeObjectForLog(obj: any, visited = new WeakSet()): any {
+  if (!obj || typeof obj !== 'object') {
+    return obj;
+  }
+  if (visited.has(obj)) {
+    return '[CIRCULAR]';
+  }
+  visited.add(obj);
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => sanitizeObjectForLog(item, visited));
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const key of Object.keys(obj)) {
+    if (isSensitiveKey(key)) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      sanitized[key] = sanitizeObjectForLog(obj[key], visited);
+    } else {
+      sanitized[key] = obj[key];
+    }
+  }
+  return sanitized;
+}
+
 export function sanitizePayloadForLog(payload: Payload): Payload {
   if (!payload) return payload;
   const sanitized = { ...payload };
+  if (sanitized.url) {
+    sanitized.url = sanitizeUrlForLog(sanitized.url);
+  }
   if (sanitized.headers) {
     const headers: Record<string, any> = { ...sanitized.headers };
     for (const key of Object.keys(headers)) {
@@ -39,6 +92,12 @@ export function sanitizePayloadForLog(payload: Payload): Payload {
     }
     sanitized.headers = headers;
   }
+  if (sanitized.qs && typeof sanitized.qs === 'object') {
+    sanitized.qs = sanitizeObjectForLog(sanitized.qs);
+  }
+  if (sanitized.body) {
+    sanitized.body = sanitizeObjectForLog(sanitized.body);
+  }
   return sanitized;
 }
 
@@ -48,6 +107,11 @@ export function sanitizeUrlForLog(urlStr: string): string {
     if (parsed.username || parsed.password) {
       parsed.username = 'REDACTED';
       parsed.password = 'REDACTED';
+    }
+    for (const paramKey of Array.from(parsed.searchParams.keys())) {
+      if (isSensitiveKey(paramKey)) {
+        parsed.searchParams.set(paramKey, '[REDACTED]');
+      }
     }
     return parsed.toString();
   } catch {
@@ -84,13 +148,14 @@ function setupRequest(payload: Payload) {
     debug('compressing request body');
     const json = JSON.stringify(body);
     if (json.length < 1e4) {
-      debug(json);
+      const sanitizedBody = sanitizeObjectForLog(body);
+      debug(jsonStringifyLargeObject(sanitizedBody));
     }
 
     // always compress going upstream
     data = zlib.gzipSync(json, { level: 9 });
 
-    snykDebug('sending request to:', payload.url);
+    snykDebug('sending request to:', sanitizeUrlForLog(payload.url));
     snykDebug('request body size:', json.length);
     snykDebug('gzipped request body size:', data.length);
 
@@ -122,9 +187,7 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(
-      sanitizePayloadForLog(payload),
-    );
+    const payloadStr = jsonStringifyLargeObject(sanitizePayloadForLog(payload));
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
