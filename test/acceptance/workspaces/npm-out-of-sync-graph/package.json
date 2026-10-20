@@ -11,13 +11,13 @@
   "dependencies": {
     "debug": "4.4.3",
     "undefsafe": "^1.0.0",
-    "aws-sdk": "^2.224.1",
+    "aws-sdk": "^2.1693.0",
     "axios": "^1.20.0",
     "bignumber.js": "^7.2.1",
     "body-parser": "^1.18.2"
   },
   "devDependencies": {
-    "eslint": "5.9.0",
+    "eslint": "10.13.0",
     "ava": "^8.0.2"
   }
 }
