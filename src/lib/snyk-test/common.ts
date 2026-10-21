@@ -43,6 +43,17 @@ function getWorkspaceInfo(
   return undefined;
 }
 
+// Bolt Optimization: Use O(1) early-exit `hasKeys` helper function instead of
+// `Object.keys(obj).length > 0` to eliminate temporary key array allocations in hot path operations.
+function hasKeys(obj: object): boolean {
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function assembleQueryString(options) {
   const org = options.org || config.org || null;
   const qs: {
@@ -60,7 +71,7 @@ export function assembleQueryString(options) {
     qs.ignorePolicy = true;
   }
 
-  return Object.keys(qs).length !== 0 ? qs : null;
+  return hasKeys(qs) ? qs : null;
 }
 
 export enum SEVERITY {
