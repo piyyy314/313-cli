@@ -6,7 +6,10 @@ import { getVulnerabilityUrl } from './formatters/get-vuln-url';
 
 const debug = createDebug('snyk-spotlight-vuln-notification');
 
-const spotlightVulnIds = ['SNYK-JAVA-ORGAPACHELOGGINGLOG4J-2314720'];
+// Bolt Optimization: Use module-level Set for O(1) spotlight vulnerability lookup during result filtering.
+const SPOTLIGHT_VULN_IDS = new Set<string>([
+  'SNYK-JAVA-ORGAPACHELOGGINGLOG4J-2314720',
+]);
 
 export function containsSpotlightVulnIds(results: any[]): string[] {
   try {
@@ -14,13 +17,13 @@ export function containsSpotlightVulnIds(results: any[]): string[] {
     for (const r of results) {
       if (r.vulnerabilities) {
         for (const v of r.vulnerabilities) {
-          if (spotlightVulnIds.includes(v.id)) {
+          if (v && v.id && SPOTLIGHT_VULN_IDS.has(v.id)) {
             spotlightVulnsFound.add(v.id);
           }
         }
       }
     }
-    return [...spotlightVulnsFound];
+    return Array.from(spotlightVulnsFound);
   } catch (err) {
     debug('Error in containsSpotlightVulnIds()', err);
     return [];
@@ -35,7 +38,7 @@ export function notificationForSpotlightVulns(
   try {
     if (foundSpotlightVulnsIds.length > 0) {
       let message = '';
-      for (const vulnId of spotlightVulnIds) {
+      for (const vulnId of SPOTLIGHT_VULN_IDS) {
         if (vulnId === 'SNYK-JAVA-ORGAPACHELOGGINGLOG4J-2314720') {
           message += theme.color.severity.critical(
             `${theme.icon.WARNING} WARNING: Critical severity vulnerabilities were found with Log4j!` +
