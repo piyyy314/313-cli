@@ -6,7 +6,7 @@
  * It collects the email of a git user and the most recent commit timestamp (both per the `git log`
  * output) and can be disabled by config (see https://snyk.io/policies/tracking-and-analytics/).
  */
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { Contributor } from '../types';
 
 export const SERIOUS_DELIMITER = '_SNYK_SEPARATOR_';
@@ -158,6 +158,37 @@ export function separateLines(inputText: string): string[] {
   return lines;
 }
 
+export function parseCommandArgs(cmd: string): { file: string; args: string[] } {
+  const tokens: string[] = [];
+  let current = '';
+  let inDoubleQuote = false;
+  let inSingleQuote = false;
+
+  for (let i = 0; i < cmd.length; i++) {
+    const char = cmd[i];
+    if (char === '\\' && i + 1 < cmd.length) {
+      current += cmd[++i];
+    } else if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+    } else if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+    } else if (char === ' ' && !inDoubleQuote && !inSingleQuote) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+    } else {
+      current += char;
+    }
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  const file = tokens.shift() || 'git';
+  return { file, args: tokens };
+}
+
 export function execShell(
   cmd: string,
   workingDirectory: string,
@@ -166,8 +197,11 @@ export function execShell(
     cwd: workingDirectory,
   };
 
+  // Security enhancement: parse command into file and args to use execFile instead of exec, preventing shell injection
+  const { file, args } = parseCommandArgs(cmd);
+
   return new Promise((resolve, reject) => {
-    exec(cmd, options, (error, stdout, stderr) => {
+    execFile(file, args, options, (error, stdout, stderr) => {
       if (error) {
         const exitCode = error.code;
 
