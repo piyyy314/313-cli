@@ -17,10 +17,15 @@ export function validateTestOptions(options: TestOptions & Options) {
   }
 }
 
+// Bolt Optimization: Pre-compute valid severity thresholds and fail-on keys in module-level Sets
+// to allow O(1) lookups and eliminate temporary array allocations (SEVERITIES.map and Object.keys) on every validation call.
+const VALID_SEVERITY_THRESHOLDS = new Set(SEVERITIES.map((s) => s.verboseName));
+const VALID_FAIL_ON_VALUES = new Set(Object.keys(FAIL_ON));
+
 function validateSeverityThreshold(severityThreshold) {
-  return SEVERITIES.map((s) => s.verboseName).indexOf(severityThreshold) > -1;
+  return VALID_SEVERITY_THRESHOLDS.has(severityThreshold);
 }
 
 function validateFailOn(arg: FailOn) {
-  return Object.keys(FAIL_ON).includes(arg);
+  return VALID_FAIL_ON_VALUES.has(arg);
 }
