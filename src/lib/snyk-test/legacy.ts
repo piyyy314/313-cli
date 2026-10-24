@@ -345,7 +345,8 @@ async function convertTestDepGraphResultToLegacy(
 ): Promise<LegacyVulnApiResult> {
   const result = res.result;
 
-  const upgradePathsMap = new Map<string, string[]>();
+  // Bolt: Use Map methods (.set and .get) for O(1) key lookup and avoid object property dictionary fallback on Map instance.
+  const upgradePathsMap = new Map<string, Array<string | boolean>>();
 
   for (const pkgInfo of values(result.affectedPkgs)) {
     for (const pkgIssue of values(pkgInfo.issues)) {
@@ -356,8 +357,9 @@ async function convertTestDepGraphResultToLegacy(
             pkgIssue.issueId,
             legacyFromPath,
           );
-          upgradePathsMap[vulnPathString] = toLegacyUpgradePath(
-            upgradePath.path,
+          upgradePathsMap.set(
+            vulnPathString,
+            toLegacyUpgradePath(upgradePath.path),
           );
         }
       }
@@ -379,7 +381,7 @@ async function convertTestDepGraphResultToLegacy(
           pkgIssue.issueId,
           legacyFromPath,
         );
-        const upgradePath = upgradePathsMap[vulnPathString] || [];
+        const upgradePath = upgradePathsMap.get(vulnPathString) || [];
 
         // TODO: we need the full issue-data for every path only for the --json output,
         //   consider picking only the required fields,
@@ -468,8 +470,9 @@ async function convertTestDepGraphResultToLegacy(
   return legacyRes;
 }
 
+// Bolt: Fast path string join avoids calling JSON.stringify on string array during hot dependency graph iteration.
 function getVulnPathString(issueId: string, vulnPath: string[]) {
-  return issueId + '|' + JSON.stringify(vulnPath);
+  return issueId + '|' + vulnPath.join('>');
 }
 
 function pkgPathToLegacyPath(pkgPath: Pkg[]): string[] {
