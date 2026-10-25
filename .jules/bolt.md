@@ -5,5 +5,5 @@
 
 ## 2025-05-18 - Guard debug calculations and avoid single-element array allocations in file scanning
 
-**Learning:** Computing debug logging diffs in directory traversal without checking `debug.enabled` incurs O(N*M) array filter overhead even when debug output is disabled. Furthermore, calling `.filter(...)[0]` with inline single-element arrays like `['package.json'].includes(...)` forces temporary array allocation and full array traversal when `.find()` with string equality short-circuits in O(1) time.
+**Learning:** Computing debug logging diffs in directory traversal without checking `debug.enabled` incurs O(N\*M) array filter overhead even when debug output is disabled. Furthermore, calling `.filter(...)[0]` with inline single-element arrays like `['package.json'].includes(...)` forces temporary array allocation and full array traversal when `.find()` with string equality short-circuits in O(1) time.
 **Action:** Always guard expensive debug string formatting behind `if (debug.enabled)` and use `.find()` for first-match searches with pre-computed `Set` references or direct string comparison.
