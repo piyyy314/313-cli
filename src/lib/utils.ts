@@ -39,7 +39,7 @@ function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
 
   for (const key of Object.keys(obj)) {
     const normalizedKey = normalizeKey(key);
-    if (SENSITIVE_KEYS.has(normalizedKey)) {
+    if (NORMALIZED_SENSITIVE_KEYS.has(normalizedKey)) {
       if (obj[key] !== undefined && obj[key] !== null) {
         obj[key] = `${key}-set`;
       }

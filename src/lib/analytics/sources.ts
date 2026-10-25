@@ -161,7 +161,7 @@ function runCommand(file: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     execFile(file, args, (error, stdout, stderr) => {
       if (error) {
-        debug("Error executing command", error);
+        debug('Error executing command', error);
         return reject(error);
       }
       return resolve(stdout ? stdout : stderr);
