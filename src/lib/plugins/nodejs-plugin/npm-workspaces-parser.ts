@@ -170,15 +170,17 @@ export function packageJsonBelongsToWorkspace(
   const workspaceRootFolder = pathUtil.dirname(
     workspaceRoot.replace(/\\/g, '/'),
   );
+  // Bolt Optimization: Combine workspace pattern resolution and glob path normalization into a single .map()
+  // pass to eliminate intermediate array allocations and redundant string replacements. Pre-normalize packageJsonFileName once.
+  const normalizedPackageJson = packageJsonFileName.replace(/\\/g, '/');
   const workspacesGlobs = (workspacesMap[workspaceRoot].workspaces || []).map(
-    (workspace) => pathUtil.join(workspaceRootFolder, workspace),
+    (workspace) =>
+      pathUtil
+        .normalize(
+          pathUtil.join(workspaceRootFolder, workspace, 'package.json'),
+        )
+        .replace(/\\/g, '/'),
   );
 
-  const match = micromatch.isMatch(
-    packageJsonFileName.replace(/\\/g, '/'),
-    workspacesGlobs.map((p) =>
-      pathUtil.normalize(pathUtil.join(p, 'package.json')).replace(/\\/g, '/'),
-    ),
-  );
-  return match;
+  return micromatch.isMatch(normalizedPackageJson, workspacesGlobs);
 }
