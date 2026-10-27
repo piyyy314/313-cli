@@ -45,13 +45,24 @@ function isSupported() {
 
 test('sub-process.execute executes sub processes', function (t) {
   if (isSupported()) {
-    t.test('runs in shell', function (t) {
+    t.test('runs in shell when shell: true option is provided', function (t) {
+      t.plan(1);
+
+      subProcess
+        .execute('echo', [shellVar], { shell: true })
+        .then(function (result) {
+          t.not(result.trim(), shellVar, 'evaluates shell variable');
+        })
+        .catch(t.fail);
+    });
+
+    t.test('does not run in shell by default (shell: false)', function (t) {
       t.plan(1);
 
       subProcess
         .execute('echo', [shellVar])
         .then(function (result) {
-          t.not(result.trim(), shellVar, 'evaluates shell variable');
+          t.equal(result.trim(), shellVar, 'does not evaluate shell variable');
         })
         .catch(t.fail);
     });
