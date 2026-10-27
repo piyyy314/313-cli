@@ -3,9 +3,12 @@ import * as childProcess from 'child_process';
 export function execute(
   command: string,
   args: string[],
-  options?: { cwd: string | undefined },
+  options?: { cwd?: string; shell?: boolean },
 ): Promise<string> {
-  const spawnOptions: childProcess.SpawnOptions = { shell: true };
+  // Security enhancement: default shell to false to prevent OS command injection risks
+  const spawnOptions: childProcess.SpawnOptions = {
+    shell: options && options.shell !== undefined ? options.shell : false,
+  };
   if (options && options.cwd) {
     spawnOptions.cwd = options.cwd;
   }
