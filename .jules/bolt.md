@@ -7,3 +7,8 @@
 
 **Learning:** Computing debug logging diffs in directory traversal without checking `debug.enabled` incurs O(N*M) array filter overhead even when debug output is disabled. Furthermore, calling `.filter(...)[0]` with inline single-element arrays like `['package.json'].includes(...)` forces temporary array allocation and full array traversal when `.find()` with string equality short-circuits in O(1) time.
 **Action:** Always guard expensive debug string formatting behind `if (debug.enabled)` and use `.find()` for first-match searches with pre-computed `Set` references or direct string comparison.
+
+## 2025-05-18 - Short-circuit predicate array filters with Array.prototype.some()
+
+**Learning:** Using chained `.filter().filter()` calls to determine boolean presence (e.g. `!!rootGradleFile.length`) evaluates all items in an array and allocates temporary intermediate arrays. Replacing chained `.filter()` calls with `.some()` short-circuits on the first match and allocates zero intermediate arrays.
+**Action:** Replace `array.filter(...).length > 0` or chained `.filter()` calls with `.some()` for boolean checks during file traversal and manifest matching.

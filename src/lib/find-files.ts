@@ -18,6 +18,9 @@ const NODE_LOCKFILES = new Set<string>([
   SUPPORTED_MANIFEST_FILES.PNPM_LOCK as string,
 ]);
 
+// Bolt Optimization: Pre-compile node package manager Set to eliminate array allocations in detectProjectTypeFromFile.
+const NODE_PACKAGE_MANAGERS = new Set<string>(['yarn', 'npm', 'pnpm']);
+
 // Bolt Optimization: Cache normalized exclude path sets by array reference to avoid O(E) array scans and string lowercasing per file check.
 const excludePathsSetCache = new WeakMap<string[], Set<string>>();
 
@@ -289,7 +292,8 @@ function detectProjectTypeFromFile(
 ): string | null {
   try {
     const packageManager = detectPackageManagerFromFile(file, featureFlags);
-    if (['yarn', 'npm', 'pnpm'].includes(packageManager)) {
+    // Bolt Optimization: Use module-level Set for O(1) lookup without array allocations
+    if (NODE_PACKAGE_MANAGERS.has(packageManager)) {
       return 'node';
     }
     return packageManager;
@@ -303,19 +307,19 @@ function shouldSkipAddingFile(
   filePath: string,
   filteredFiles: string[],
 ): boolean {
-  if (['gradle'].includes(packageManager) && filePath) {
-    const rootGradleFile = filteredFiles
-      .filter(
-        (targetFile) =>
-          targetFile.endsWith('build.gradle') ||
-          targetFile.endsWith('build.gradle.kts'),
-      )
-      .filter((targetFile) => {
-        const parsedPath = pathLib.parse(targetFile);
-        const relativePath = pathLib.relative(parsedPath.dir, filePath);
-        return !relativePath.startsWith(`..${pathLib.sep}`);
-      });
-    return !!rootGradleFile.length;
+  // Bolt Optimization: Direct string comparison avoids array allocation, and .some() short-circuits without intermediate array allocations
+  if (packageManager === 'gradle' && filePath) {
+    return filteredFiles.some((targetFile) => {
+      if (
+        !targetFile.endsWith('build.gradle') &&
+        !targetFile.endsWith('build.gradle.kts')
+      ) {
+        return false;
+      }
+      const parsedPath = pathLib.parse(targetFile);
+      const relativePath = pathLib.relative(parsedPath.dir, filePath);
+      return !relativePath.startsWith(`..${pathLib.sep}`);
+    });
   }
   return false;
 }
