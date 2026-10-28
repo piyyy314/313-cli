@@ -5,8 +5,6 @@ GOOS = $(shell go env GOOS)
 GOARCH = $(shell go env GOARCH)
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
-FIPS_CRYPTO_BACKEND_DEFAULT = systemcrypto
-FIPS_CRYPTO_BACKEND =
 MS_GO_NOSYSTEMCRYPTO ?= 1
 HASH = sha
 HASH_ALGORITHM = 256
@@ -46,7 +44,7 @@ _validate-build-mode:
 
 # Build tools
 GO_BIN := $(shell pwd)/.bin
-OVERRIDE_GOCI_LINT_V := v2.9.0
+OVERRIDE_GOCI_LINT_V := v2.14.0
 SHELL := env PATH=$(GO_BIN):$(PATH) $(SHELL)
 
 # Make directories per convention
@@ -58,6 +56,10 @@ bindir = $(exec_prefix)/bin
 WORKING_DIR = $(CURDIR)
 BUILD_DIR = $(WORKING_DIR)/_bin
 CACHE_DIR = $(WORKING_DIR)/_cache
+LICENSES_CACHE_DIR = $(V1_WORKING_DIR)/.go-cache/licenses
+LICENSES_CACHE_GO_SUM = $(V1_WORKING_DIR)/.go-cache/prepare-3rd-party-licenses.go.sum
+LICENSES_CACHE_GENERATOR = $(V1_WORKING_DIR)/.go-cache/prepare_licenses.go
+LICENSES_EMBEDDED_DIR = $(WORKING_DIR)/internal/embedded/_data/licenses
 LS_PROTOCOL_VERSION_FILE = $(CACHE_DIR)/ls-protocol-version
 LS_COMMIT_HASH_FILE = $(CACHE_DIR)/ls-commit-hash
 LS_COMMIT_HASH = $(if $(wildcard $(LS_COMMIT_HASH_FILE)),$(shell cat $(LS_COMMIT_HASH_FILE)),determined during LS metadata generation)
@@ -174,7 +176,6 @@ dependencies: $(V1_DIRECTORY)/$(V1_EXECUTABLE_NAME) $(V1_DIRECTORY)/$(V1_EXECUTA
 summary:
 	@echo "$(LOG_PREFIX) Build Summary"
 	@echo "$(LOG_PREFIX)  Using Go installation:        $(shell which go)"
-	@echo "$(LOG_PREFIX)  Non-Standard Crypto-Backend:  $(FIPS_CRYPTO_BACKEND)"
 	@echo "$(LOG_PREFIX)  MS_GO_NOSYSTEMCRYPTO:         $(MS_GO_NOSYSTEMCRYPTO)"
 	@echo "$(LOG_PREFIX)  Building Binary:              $(BUILD_DIR)/$(V2_EXECUTABLE_NAME)"
 	@echo "$(LOG_PREFIX)  Build mode:                   $(BUILD_MODE)"
@@ -189,7 +190,7 @@ summary:
 
 # prepare the workspace and cache global parameters
 .PHONY: configure
-configure: _validate-build-mode _verify-private-build summary $(CACHE_DIR) $(CACHE_DIR)/variables.mk $(V1_DIRECTORY)/$(V1_EMBEDDED_FILE_OUTPUT) dependencies $(CACHE_DIR)/prepare-3rd-party-licenses
+configure: _validate-build-mode _verify-private-build summary $(CACHE_DIR) $(CACHE_DIR)/variables.mk $(V1_DIRECTORY)/$(V1_EMBEDDED_FILE_OUTPUT) dependencies prepare-3rd-party-licenses
 
 .PHONY: _helpdocs-prepare
 _helpdocs-prepare:
@@ -212,16 +213,11 @@ $(BUILD_DIR)/$(V2_EXECUTABLE_NAME): $(BUILD_DIR) $(SRCS) generate-ls-protocol-me
 	@echo "$(LOG_PREFIX)  EXTRA_FLAGS: "
 	@$(foreach flag,$(filter -X%,$(subst -X ,$(space)-X,$(EXTRA_FLAGS))),echo "$(LOG_PREFIX)    $(flag)";)
 	@echo "$(LOG_PREFIX)  GCFLAGS:     $(GCFLAGS)"
-	@cd $(BUILD_ROOT_DIR) && CGO_ENABLED=$(CGO_ENABLED)  GOEXPERIMENT=$(FIPS_CRYPTO_BACKEND) MS_GO_NOSYSTEMCRYPTO=$(MS_GO_NOSYSTEMCRYPTO) GOOS=$(_GO_OS) GOARCH=$(GOARCH) $(GOCMD) build -tags=application -ldflags="$(LDFLAGS) $(EXTRA_FLAGS)" $(GCFLAGS) -o $(BUILD_DIR)/$(V2_EXECUTABLE_NAME) ./cmd/cliv2
+	@cd $(BUILD_ROOT_DIR) && CGO_ENABLED=$(CGO_ENABLED) MS_GO_NOSYSTEMCRYPTO=$(MS_GO_NOSYSTEMCRYPTO) GOOS=$(_GO_OS) GOARCH=$(GOARCH) $(GOCMD) build -tags=application -ldflags="$(LDFLAGS) $(EXTRA_FLAGS)" $(GCFLAGS) -o $(BUILD_DIR)/$(V2_EXECUTABLE_NAME) ./cmd/cliv2
 
 .PHONY: fips
 fips:
-	# CI uses Microsoft's Go toolchain for Linux and Windows builds. Since Microsoft Go enables
-	# `systemcrypto` by default, we explicitly disable it for the non-FIPS binaries.
-	# See https://github.com/microsoft/go/blob/microsoft/main/eng/doc/fips/README.md
 	$(eval MS_GO_NOSYSTEMCRYPTO := 0)
-	# assign name of crypto backend to use
-	$(eval FIPS_CRYPTO_BACKEND := $(FIPS_CRYPTO_BACKEND_DEFAULT))
 	@echo "$(LOG_PREFIX) FIPS"
 
 .PHONY: experimental
@@ -255,10 +251,28 @@ $(WORKING_DIR)/internal/httpauth/generated/spnego_generated_mock.go:
 	@$(GOCMD) generate ./internal/httpauth/
 
 
-$(CACHE_DIR)/prepare-3rd-party-licenses:
-	@echo "$(LOG_PREFIX) Preparing 3rd Party Licenses"
-	@GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) $(GOCMD) run scripts/prepare_licenses.go > $(CACHE_DIR)/prepare-3rd-party-licenses 2> $(CACHE_DIR)/prepare-3rd-party-licenses.log \
-		|| (cat $(CACHE_DIR)/prepare-3rd-party-licenses.log && exit 1)
+.PHONY: prepare-3rd-party-licenses
+prepare-3rd-party-licenses:
+	@set -e; \
+	if [ -n "$$(ls -A "$(LICENSES_CACHE_DIR)" 2>/dev/null)" ] && cmp -s go.sum "$(LICENSES_CACHE_GO_SUM)" && cmp -s scripts/prepare_licenses.go "$(LICENSES_CACHE_GENERATOR)"; then \
+		if [ ! -d "$(LICENSES_EMBEDDED_DIR)" ]; then \
+			echo "$(LOG_PREFIX) Restoring 3rd Party Licenses"; \
+			mkdir -p "$(dir $(LICENSES_EMBEDDED_DIR))"; \
+			cp -R "$(LICENSES_CACHE_DIR)" "$(LICENSES_EMBEDDED_DIR)"; \
+		fi; \
+	else \
+		echo "$(LOG_PREFIX) Preparing 3rd Party Licenses"; \
+		rm -rf "$(LICENSES_EMBEDDED_DIR)"; \
+		echo "$(LOG_PREFIX) prepare_licenses: start"; \
+		GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) $(GOCMD) run scripts/prepare_licenses.go > $(CACHE_DIR)/prepare-3rd-party-licenses 2> $(CACHE_DIR)/prepare-3rd-party-licenses.log \
+			|| { cat $(CACHE_DIR)/prepare-3rd-party-licenses.log; exit 1; }; \
+		echo "$(LOG_PREFIX) prepare_licenses: done"; \
+		rm -rf "$(LICENSES_CACHE_DIR)"; \
+		mkdir -p "$(LICENSES_CACHE_DIR)"; \
+		cp -R "$(LICENSES_EMBEDDED_DIR)/." "$(LICENSES_CACHE_DIR)"; \
+		cp go.sum "$(LICENSES_CACHE_GO_SUM)"; \
+		cp scripts/prepare_licenses.go "$(LICENSES_CACHE_GENERATOR)"; \
+	fi
 	@echo "$(LOG_PREFIX) 3rd party licenses: ok"
 
 .PHONY: generate
