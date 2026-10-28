@@ -79,7 +79,7 @@ bluebird@^3.5.1:
   resolved "https://registry.yarnpkg.com/bluebird/-/bluebird-3.7.2.tgz#9f229c15be272454ffa973ace0dbee79a1b0c36f"
   integrity sha512-XpNj6GDQzdfW+r2Wnn7xiSAd7TM3jzkxGXBGTtWKuSXv1xUV+azxAm8jdWZN06QTQk+2N2XB9jRDkvbmQmcRtg==
 
-boolean@^3.0.1:
+boolean@*, boolean@^3.0.1:
   version "3.2.0"
   resolved "https://registry.yarnpkg.com/boolean/-/boolean-3.2.0.tgz#9e5294af4e98314494cbb17979fa54ca159f116b"
   integrity sha512-d0II/GO9uf9lfUHH2BQsjxzRJZBdsjgsBiW4BvhWk/3qoKwQFjIDVN19PfX8F2D/r9PCMTtLWjYVCFrpeYUzsw==
@@ -218,6 +218,11 @@ execa@^0.7.0:
     p-finally "^1.0.0"
     signal-exit "^3.0.0"
     strip-eof "^1.0.0"
+
+fast-printf@^1.6.9:
+  version "1.6.10"
+  resolved "https://registry.yarnpkg.com/fast-printf/-/fast-printf-1.6.10.tgz#c44ad871726152159d7a903a5af0d65cf3d75875"
+  integrity sha512-GwTgG9O4FVIdShhbVF3JxOgSBY2+ePGsu2V/UONgoCPzF9VY6ZdBMKsHKCYQHZwNk3qNouUolRDsgVxcVA5G1w==
 
 find-up@^2.1.0:
   version "2.1.0"
@@ -512,6 +517,15 @@ require-main-filename@^1.0.1:
   resolved "https://registry.yarnpkg.com/require-main-filename/-/require-main-filename-1.0.1.tgz#97f717b69d48784f5f526a6c5aa8ffdda055a4d1"
   integrity sha1-l/cXtp1IeE9fUmpsWqj/3aBVpNE=
 
+roarr@*:
+  version "7.21.7"
+  resolved "https://registry.yarnpkg.com/roarr/-/roarr-7.21.7.tgz#b77c762660378234e1370c3e333596a744c0f6b1"
+  integrity sha512-6X9ID9jb83kPkDxm5xLb9rZdGm6ksdDjpeL0iW5weKelJFi+NVBSowRpEuH8CdpX2x+7RW0TZaezibE7yQB7pg==
+  dependencies:
+    fast-printf "^1.6.9"
+    safe-stable-stringify "^2.4.3"
+    semver-compare "^1.0.0"
+
 roarr@^2.15.3:
   version "2.15.4"
   resolved "https://registry.yarnpkg.com/roarr/-/roarr-2.15.4.tgz#f5fe795b7b838ccfe35dc608e0282b9eba2e7afd"
@@ -523,6 +537,11 @@ roarr@^2.15.3:
     json-stringify-safe "^5.0.1"
     semver-compare "^1.0.0"
     sprintf-js "^1.1.2"
+
+safe-stable-stringify@^2.4.3:
+  version "2.5.0"
+  resolved "https://registry.yarnpkg.com/safe-stable-stringify/-/safe-stable-stringify-2.5.0.tgz#4ca2f8e385f2831c432a719b108a3bf7af42a1dd"
+  integrity sha512-b3rppTKm9T+PsVCBEOUR46GWI7fdOs00VKZ1+9c1EWDaDMvjQc6tUwuFyIprgGgTcWoVHSKrU8H31ZHA2e0RHA==
 
 semver-compare@^1.0.0:
   version "1.0.0"
@@ -563,13 +582,15 @@ signal-exit@^3.0.0:
   resolved "https://registry.yarnpkg.com/signal-exit/-/signal-exit-3.0.3.tgz#a1410c2edd8f077b08b4e253c8eacfcaf057461c"
   integrity sha512-VUJ49FC8U1OxwZLxIbTTrDvLnf/6TDgxZcK8wxR8zs13xpx7xbG60ndBlhNrFi2EMuFRoeDoJO7wthSLq42EjA==
 
-snyk@1.1306.3:
-  version "1.1306.3"
-  resolved "https://registry.yarnpkg.com/snyk/-/snyk-1.1306.3.tgz#02cc81e70b633ca92b10fb4640276b17d400446f"
-  integrity sha512-vmj5pn6VEtD1SVXNvZz/67gQd9QI2Yi7GdvXT71fQ3MgFbQmTywzUgXd1yxp/5Jt0SiJxvNfEfU3Lp6XHrv4/Q==
+snyk@1.1308.3:
+  version "1.1308.3"
+  resolved "https://registry.yarnpkg.com/snyk/-/snyk-1.1308.3.tgz#6fd4337be2dda78b02f20fcd72d54d5e3ff15de3"
+  integrity sha512-CgpCJyOg4c4VvWSU6sIHrgU4z5MoknuQ1WhZi6gYjkluCgpBaEvmGd+SiyegY1FWYNhocTj+RpJwn5af3wwPkw==
   dependencies:
     "@sentry/node" "^7.36.0"
+    boolean "*"
     global-agent "^3.0.0"
+    roarr "*"
 
 split@^1.0.1:
   version "1.0.1"
