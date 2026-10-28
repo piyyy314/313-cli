@@ -24,6 +24,22 @@ describe('Sanitize args', () => {
     expect(resultWithFlag.file).toEqual('Dockerfile');
   });
 
+  it('should obfuscate token and tfc-token credentials', () => {
+    const argsWithTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      org: 'demo-org',
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-token-456',
+    };
+
+    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(result.token).toEqual('token-set');
+    expect(result['tfc-token']).toEqual('tfc-token-set');
+    expect(result.org).toEqual('demo-org');
+  });
+
   it('should obfuscate personally identifiable information from args', () => {
     const argsWithUsernameAndPassword: ArgsOptions = {
       _doubleDashArgs: [],
@@ -52,6 +68,8 @@ describe('Sanitize args', () => {
         _: ['snyk/goof-image:latest'],
         username: 'fakeuser',
         password: 'fakepass',
+        token: 'secret-token-123',
+        'tfc-token': 'tfc-secret-token-456',
         debug: true,
         docker: true,
       },
@@ -62,6 +80,41 @@ describe('Sanitize args', () => {
     expect(resultWithFlag[0]).toEqual('snyk/goof-image:latest');
     expect(resultWithFlag[1].username).toEqual('username-set');
     expect(resultWithFlag[1].password).toEqual('password-set');
+    expect(resultWithFlag[1].token).toEqual('token-set');
+    expect(resultWithFlag[1]['tfc-token']).toEqual('tfc-token-set');
+  });
+
+  it('should obfuscate token and tfc-token when provided', () => {
+    const argsWithTokens: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: ['snyk/goof-image:latest'],
+      org: 'demo-org',
+      token: 'secret-token-123',
+      'tfc-token': 'tfc-secret-456',
+    };
+
+    const result = obfuscateArgs(argsWithTokens) as ArgsOptions;
+
+    expect(result.token).toEqual('token-set');
+    expect(result['tfc-token']).toEqual('tfc-token-set');
+    expect(result.org).toEqual('demo-org');
+  });
+
+  it('should obfuscate nested tokens in MethodArgs', () => {
+    const argsWithNestedTokens: MethodArgs = [
+      'snyk/goof-image:latest',
+      {
+        _doubleDashArgs: [],
+        _: ['snyk/goof-image:latest'],
+        token: 'secret-token-123',
+        'tfc-token': 'tfc-secret-456',
+      },
+    ];
+
+    const result = obfuscateArgs(argsWithNestedTokens);
+
+    expect(result[1].token).toEqual('token-set');
+    expect(result[1]['tfc-token']).toEqual('tfc-token-set');
   });
 });
 
