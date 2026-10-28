@@ -121,15 +121,16 @@ marked.setOptions({
   mangle: false,
 });
 
-const htmlUnescapes = {
-  '&amp;': '&',
-  '&lt;': '<',
-  '&gt;': '>',
-  '&quot;': '"',
-  '&#39;': "'",
-  '&#96;': '`',
-  '&#x20;': '',
-};
+// Pre-compiled regex replacements to avoid repeated RegExp instantiation and Object.entries allocation per call
+const HTML_UNESCAPE_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/&amp;/g, '&'],
+  [/&lt;/g, '<'],
+  [/&gt;/g, '>'],
+  [/&quot;/g, '"'],
+  [/&#39;/g, "'"],
+  [/&#96;/g, '`'],
+  [/&#x20;/g, ''],
+];
 
 /**
  * @description Replace HTML entities with their non-encoded variant
@@ -137,10 +138,10 @@ const htmlUnescapes = {
  * @returns {string}
  */
 function unescape(text: string): string {
-  Object.entries(htmlUnescapes).forEach(([escapedChar, unescapedChar]) => {
-    const escapedCharRegExp = new RegExp(escapedChar, 'g');
-    text = text.replace(escapedCharRegExp, unescapedChar);
-  });
+  for (let i = 0; i < HTML_UNESCAPE_REPLACEMENTS.length; i++) {
+    const [regex, replacement] = HTML_UNESCAPE_REPLACEMENTS[i];
+    text = text.replace(regex, replacement);
+  }
   return text;
 }
 
