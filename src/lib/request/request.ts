@@ -15,8 +15,45 @@ import { jsonStringifyLargeObject } from '../json';
 import { MissingApiTokenError } from '../errors';
 import { headerSnykAuthFailed } from './constants';
 import { truncateForLog } from '../utils';
+import * as cloneDeep from 'lodash.clonedeep';
 
 const debug = debugModule('snyk:req');
+
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'x-api-key',
+  'session-token',
+  'cookie',
+  'snyk-api-key',
+  'x-auth-token',
+  'proxy-authorization',
+]);
+
+export function sanitizePayloadForLog(payload: Payload): Payload {
+  const sanitized = cloneDeep(payload);
+  if (sanitized.headers) {
+    const newHeaders = { ...sanitized.headers };
+    for (const key of Object.keys(newHeaders)) {
+      if (SENSITIVE_HEADERS.has(key.toLowerCase())) {
+        newHeaders[key] = '[REDACTED]';
+      }
+    }
+    sanitized.headers = newHeaders;
+  }
+  if (sanitized.url) {
+    try {
+      const parsedUrl = new URL(sanitized.url);
+      if (parsedUrl.username || parsedUrl.password) {
+        parsedUrl.username = '[REDACTED]';
+        parsedUrl.password = '[REDACTED]';
+        sanitized.url = parsedUrl.toString();
+      }
+    } catch {
+      // ignore URL parsing error
+    }
+  }
+  return sanitized;
+}
 const snykDebug = debugModule('snyk');
 
 declare const global: Global;
@@ -88,7 +125,8 @@ function setupRequest(payload: Payload) {
   }
 
   try {
-    const payloadStr = jsonStringifyLargeObject(payload);
+    const sanitizedPayload = sanitizePayloadForLog(payload);
+    const payloadStr = jsonStringifyLargeObject(sanitizedPayload);
     debug('request payload: ', truncateForLog(payloadStr));
   } catch (e) {
     debug('request payload is too big to log', e);
