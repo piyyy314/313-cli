@@ -1,5 +1,3 @@
-# Bolt's Journal
-
-## 2026-08-10 - Optimizing Environment & Container Detection Checks
-**Learning:** Checking environmental properties like CI status using `Object.keys(process.env).some(...)` causes redundant array allocations and $O(n)$ scanning of the process environment on every single lookup. Similarly, checking if running in a Docker container using synchronous file system reads (`fs.statSync` and `fs.readFileSync`) blocks the thread and incurs heavy overhead when executed repetitively. Caching these checks at the module level while bypassing the cache in test environments (`process.env.NODE_ENV === 'test'`) delivers huge speedups and keeps unit tests perfectly clean and isolated.
-**Action:** Always prefer checking specific Set keys directly on `process.env` (which has $O(1)$ complexity) instead of scanning/allocating keys. Cache immutable environmental checks after the first execution using test-safe conditions.
+## 2025-05-18 - Avoid Object.keys() allocations in vulnerability predicate checks
+**Learning:** Checking for object property presence using `Object.keys(obj).length > 0` forces V8 to allocate an array containing all property names. Using a `for...in` loop with `Object.prototype.hasOwnProperty.call(obj, key)` provides an O(1) early-exit check that avoids heap allocation entirely.
+**Action:** Use a `hasKeys` helper function with early return for property existence checks on hot paths or large objects.

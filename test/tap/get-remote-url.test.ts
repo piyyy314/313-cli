@@ -28,8 +28,9 @@ test('getInfo handles provided https remote url as http', async (t) => {
   t.same(gitInfo.remoteUrl, 'http://myserver.local/myproject.git');
 });
 
-test('getInfo strips basic authentication credentials from remote url', async (t) => {
-  const providedUrl = 'https://x-access-token:ghp_secret123@myserver.local/myproject.git';
+test('getInfo redacts basic auth credentials from https remote url', async (t) => {
+  const providedUrl =
+    'https://user:secretPassword@myserver.local:8080/myproject.git';
   const { getInfo } = proxyquire(
     '../../src/lib/project-metadata/target-builders/git',
     {
@@ -41,7 +42,24 @@ test('getInfo strips basic authentication credentials from remote url', async (t
     },
   );
   const gitInfo = await getInfo(false);
-  t.same(gitInfo.remoteUrl, 'http://myserver.local/myproject.git');
+  t.same(gitInfo.remoteUrl, 'http://myserver.local:8080/myproject.git');
+});
+
+test('getInfo redacts token credentials from https remote url', async (t) => {
+  const providedUrl =
+    'https://x-access-token:ghp_1234567890@github.com/org/repo.git';
+  const { getInfo } = proxyquire(
+    '../../src/lib/project-metadata/target-builders/git',
+    {
+      '../../sub-process': {
+        execute() {
+          return providedUrl;
+        },
+      },
+    },
+  );
+  const gitInfo = await getInfo(false);
+  t.same(gitInfo.remoteUrl, 'http://github.com/org/repo.git');
 });
 
 test('getInfo handles provided http remote url', async (t) => {
