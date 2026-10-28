@@ -117,6 +117,49 @@ describe('Sanitize args', () => {
     expect(result[1]['tfc-token']).toEqual('tfc-token-set');
   });
 
+  it('obfuscates every options object regardless of its argument position', () => {
+    const credentials: ArgsOptions = {
+      _doubleDashArgs: [],
+      _: [],
+      username: 'fakeuser',
+      password: 'fakepass',
+      token: 'secret-token',
+      'tfc-token': 'tfc-secret',
+      'azurerm-account-key': 'azure-secret',
+      'fetch-tfstate-headers': 'Authorization: Bearer secret',
+      'api-key': 'api-secret',
+      org: 'demo-org',
+    };
+    const args: MethodArgs = [
+      credentials,
+      'first-path',
+      { ...credentials },
+      'second-path',
+      { ...credentials },
+    ];
+    const original = JSON.parse(JSON.stringify(args));
+
+    const result = obfuscateArgs(args) as MethodArgs;
+
+    for (const index of [0, 2, 4]) {
+      expect(result[index]).toEqual({
+        _doubleDashArgs: [],
+        _: [],
+        username: 'username-set',
+        password: 'password-set',
+        token: 'token-set',
+        'tfc-token': 'tfc-token-set',
+        'azurerm-account-key': 'azurerm-account-key-set',
+        'fetch-tfstate-headers': 'fetch-tfstate-headers-set',
+        'api-key': 'api-key-set',
+        org: 'demo-org',
+      });
+    }
+    expect(result[1]).toBe('first-path');
+    expect(result[3]).toBe('second-path');
+    expect(args).toEqual(original);
+  });
+
   it('should obfuscate azurerm-account-key, fetch-tfstate-headers, and api-key credentials', () => {
     const argsWithExtendedCredentials: ArgsOptions = {
       _doubleDashArgs: [],

@@ -24,12 +24,18 @@ export function obfuscateArgs(
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
 
-  for (const key of SENSITIVE_KEYS) {
-    if (obfuscatedArgs[key]) {
-      obfuscatedArgs[key] = `${key}-set`;
+  const options = Array.isArray(obfuscatedArgs)
+    ? obfuscatedArgs
+    : [obfuscatedArgs];
+
+  for (const arg of options) {
+    if (typeof arg !== 'object' || arg === null) {
+      continue;
     }
-    if (obfuscatedArgs[1] && obfuscatedArgs[1][key]) {
-      obfuscatedArgs[1][key] = `${key}-set`;
+    for (const key of SENSITIVE_KEYS) {
+      if (arg[key]) {
+        arg[key] = `${key}-set`;
+      }
     }
   }
 

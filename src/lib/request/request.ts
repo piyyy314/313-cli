@@ -31,6 +31,8 @@ const SENSITIVE_HEADERS = new Set([
 
 export function sanitizePayloadForLog(payload: Payload): Payload {
   const sanitized = cloneDeep(payload);
+  // Omit query parameters, which can contain credentials under arbitrary names.
+  delete sanitized.qs;
   if (sanitized.headers) {
     const newHeaders = { ...sanitized.headers };
     for (const key of Object.keys(newHeaders)) {
@@ -41,6 +43,7 @@ export function sanitizePayloadForLog(payload: Payload): Payload {
     sanitized.headers = newHeaders;
   }
   if (sanitized.url) {
+    sanitized.url = sanitized.url.split('?')[0];
     try {
       const parsedUrl = new URL(sanitized.url);
       if (parsedUrl.username || parsedUrl.password) {
@@ -93,7 +96,7 @@ function setupRequest(payload: Payload) {
     // always compress going upstream
     data = zlib.gzipSync(json, { level: 9 });
 
-    snykDebug('sending request to:', payload.url);
+    snykDebug('sending request to:', sanitizePayloadForLog(payload).url);
     snykDebug('request body size:', json.length);
     snykDebug('gzipped request body size:', data.length);
 
