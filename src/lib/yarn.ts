@@ -1,5 +1,5 @@
 import * as Debug from 'debug';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { CustomError } from './errors';
 
 const debug = Debug('snyk');
@@ -12,32 +12,33 @@ export function yarn(
   flags: string[],
 ) {
   flags = flags || [];
-  if (!packages) {
-    packages = [];
+  let packageList: string[] = [];
+  if (packages) {
+    packageList = Array.isArray(packages) ? packages : [packages];
   }
 
-  if (!Array.isArray(packages)) {
-    packages = [packages];
-  }
-
-  method += ' ' + flags.join(' ');
+  const args: string[] = [method, ...flags, ...packageList].filter(
+    (arg): arg is string => typeof arg === 'string' && arg.length > 0,
+  );
 
   return new Promise<void>((resolve, reject) => {
-    const cmd = 'yarn ' + method + ' ' + packages.join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    debug('%s$ yarn %s', cwd, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    // Use execFile with discrete argument arrays to prevent OS command injection
+    execFile(
+      'yarn',
+      args,
       {
         cwd,
+        shell: process.platform === 'win32',
       },
       (error, stdout, stderr) => {
         if (error) {

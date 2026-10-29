@@ -1,6 +1,6 @@
 import debugModule = require('debug');
 const debug = debugModule('snyk');
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 
 export default function npm(
   method: string,
@@ -10,38 +10,39 @@ export default function npm(
   flags: string[] | null,
 ): Promise<void> {
   flags = flags || [];
-  if (!packages) {
-    packages = [];
-  }
-
-  if (!Array.isArray(packages)) {
-    packages = [packages];
+  let packageList: string[] = [];
+  if (packages) {
+    packageList = Array.isArray(packages) ? packages : [packages];
   }
 
   // only if we have packages, then always save, otherwise the command might
   // be something like `npm shrinkwrap'
-  if (packages.length && !flags.length) {
+  if (packageList.length && !flags.length) {
     flags.push('--save');
   }
 
-  method += ' ' + flags.join(' ');
+  const args: string[] = [method, ...flags, ...packageList].filter(
+    (arg): arg is string => typeof arg === 'string' && arg.length > 0,
+  );
 
   return new Promise((resolve, reject) => {
-    const cmd = 'npm ' + method + ' ' + (packages as string[]).join(' ');
     if (!cwd) {
       cwd = process.cwd();
     }
-    debug('%s$ %s', cwd, cmd);
+    debug('%s$ npm %s', cwd, args.join(' '));
 
     if (!live) {
       debug('[skipping - dry run]');
       return resolve();
     }
 
-    exec(
-      cmd,
+    // Use execFile with discrete argument arrays to prevent OS command injection
+    execFile(
+      'npm',
+      args,
       {
         cwd,
+        shell: process.platform === 'win32',
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -65,10 +66,13 @@ export default function npm(
 
 export function getVersion() {
   return new Promise((resolve, reject) => {
-    exec(
-      'npm --version',
+    // Use execFile with discrete argument arrays to prevent OS command injection
+    execFile(
+      'npm',
+      ['--version'],
       {
         cwd: process.cwd(),
+        shell: process.platform === 'win32',
       },
       (error, stdout) => {
         if (error) {
