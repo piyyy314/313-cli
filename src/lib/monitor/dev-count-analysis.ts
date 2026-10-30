@@ -6,7 +6,7 @@
  * It collects the email of a git user and the most recent commit timestamp (both per the `git log`
  * output) and can be disabled by config (see https://snyk.io/policies/tracking-and-analytics/).
  */
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { Contributor } from '../types';
 
 export const SERIOUS_DELIMITER = '_SNYK_SEPARATOR_';
@@ -169,8 +169,14 @@ export function execShell(
     cwd: workingDirectory,
   };
 
+  // Parse command string into binary and arguments array to prevent OS command injection
+  const tokens = (cmd.match(/"[^"]*"|\S+/g) || []).map((arg) =>
+    arg.startsWith('"') && arg.endsWith('"') ? arg.slice(1, -1) : arg,
+  );
+  const file = tokens.shift() || 'git';
+
   return new Promise((resolve, reject) => {
-    exec(cmd, options, (error, stdout, stderr) => {
+    execFile(file, tokens, options, (error, stdout, stderr) => {
       if (error) {
         const exitCode = error.code;
 
