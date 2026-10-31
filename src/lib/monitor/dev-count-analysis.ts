@@ -6,7 +6,7 @@
  * It collects the email of a git user and the most recent commit timestamp (both per the `git log`
  * output) and can be disabled by config (see https://snyk.io/policies/tracking-and-analytics/).
  */
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { Contributor } from '../types';
 
 export const SERIOUS_DELIMITER = '_SNYK_SEPARATOR_';
@@ -146,11 +146,23 @@ export async function runGitLog(
   timestampEpochSecondsStartOfPeriod: number,
   timestampEpochSecondsEndOfPeriod: number,
   repoPath: string,
-  fnShellout: (cmd: string, workingDirectory: string) => Promise<string>,
+  fnShellout: (
+    file: string,
+    args: string[],
+    workingDirectory: string,
+  ) => Promise<string> = execShell,
 ): Promise<string> {
   try {
-    const gitLogCommand = `git --no-pager log --pretty=tformat:"%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI" --after="${timestampEpochSecondsStartOfPeriod}" --until="${timestampEpochSecondsEndOfPeriod}" --max-count=${MAX_COMMITS_IN_GIT_LOG}`;
-    const gitLogStdout: string = await fnShellout(gitLogCommand, repoPath);
+    // Use discrete argument array with execFile instead of shell string interpolation to prevent OS command injection
+    const gitLogArgs = [
+      '--no-pager',
+      'log',
+      `--pretty=tformat:%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI`,
+      `--after=${timestampEpochSecondsStartOfPeriod}`,
+      `--until=${timestampEpochSecondsEndOfPeriod}`,
+      `--max-count=${MAX_COMMITS_IN_GIT_LOG}`,
+    ];
+    const gitLogStdout: string = await fnShellout('git', gitLogArgs, repoPath);
     return gitLogStdout;
   } catch {
     return '';
@@ -162,7 +174,8 @@ export function separateLines(inputText: string): string[] {
 }
 
 export function execShell(
-  cmd: string,
+  file: string,
+  args: string[],
   workingDirectory: string,
 ): Promise<string> {
   const options = {
@@ -170,13 +183,14 @@ export function execShell(
   };
 
   return new Promise((resolve, reject) => {
-    exec(cmd, options, (error, stdout, stderr) => {
+    // Use execFile to avoid spawning a shell and eliminate OS command injection vulnerabilities
+    execFile(file, args, options, (error, stdout, stderr) => {
       if (error) {
         const exitCode = error.code;
 
         const e = new ShellOutError(
           error.message,
-          exitCode,
+          typeof exitCode === 'number' ? exitCode : undefined,
           stdout,
           stderr,
           error,
