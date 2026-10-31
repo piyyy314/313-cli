@@ -9,20 +9,28 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const SENSITIVE_KEYS = new Set([
+const NORMALIZED_SENSITIVE_KEYS = new Set([
   'username',
   'password',
   'token',
-  'tfc-token',
-  'azurerm-account-key',
-  'fetch-tfstate-headers',
-  'api-key',
-  'snykToken',
-  'snyk-token',
-  'oauthToken',
-  'oauth-token',
+  'tfctoken',
+  'azurermaccountkey',
+  'fetchtfstateheaders',
+  'apikey',
+  'snyktoken',
+  'oauthtoken',
   'auth',
+  'authorization',
+  'clientsecret',
+  'secret',
+  'accesstoken',
+  'refreshtoken',
+  'credential',
 ]);
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[-_]/g, '');
+}
 
 function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
   if (!obj || typeof obj !== 'object' || visited.has(obj)) {
@@ -31,7 +39,8 @@ function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
   visited.add(obj);
 
   for (const key of Object.keys(obj)) {
-    if (SENSITIVE_KEYS.has(key)) {
+    const normalized = normalizeKey(key);
+    if (NORMALIZED_SENSITIVE_KEYS.has(normalized)) {
       if (obj[key] !== undefined && obj[key] !== null) {
         obj[key] = `${key}-set`;
       }
