@@ -31,9 +31,17 @@ describe('cli dev count via git log analysis', () => {
         10,
       );
 
-    const withMergesGitLogCommand = `git --no-pager log --pretty=tformat:"%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI${SERIOUS_DELIMITER}%s" --after="${timestampEpochSecondsStartOfPeriod}" --until="${timestampEpochSecondsEndOfPeriod}" --max-count=${MAX_COMMITS_IN_GIT_LOG}`;
+    const gitLogArgs = [
+      '--no-pager',
+      'log',
+      `--pretty=tformat:%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI${SERIOUS_DELIMITER}%s`,
+      `--after=${timestampEpochSecondsStartOfPeriod}`,
+      `--until=${timestampEpochSecondsEndOfPeriod}`,
+      `--max-count=${MAX_COMMITS_IN_GIT_LOG}`,
+    ];
     const withMergesGitLogStdout: string = await execShell(
-      withMergesGitLogCommand,
+      'git',
+      gitLogArgs,
       process.cwd(),
     );
     const withMergesLogLines = separateLines(withMergesGitLogStdout);
@@ -88,7 +96,17 @@ describe('cli dev count via git log analysis', () => {
   });
 
   it('runGitLog returns empty string and does not throw error when git log command fails', async () => {
-    const mockExecShell = (): Promise<string> => {
+    let capturedFile = '';
+    let capturedArgs: string[] = [];
+    let capturedCwd = '';
+    const mockExecShell = (
+      file: string,
+      args: string[],
+      cwd: string,
+    ): Promise<string> => {
+      capturedFile = file;
+      capturedArgs = args;
+      capturedCwd = cwd;
       const e = new ShellOutError(
         'mock error',
         1,
@@ -106,6 +124,16 @@ describe('cli dev count via git log analysis', () => {
       mockExecShell,
     );
     expect(gitLog).toEqual('');
+    expect(capturedFile).toEqual('git');
+    expect(capturedCwd).toEqual('/some/fake/path');
+    expect(capturedArgs).toEqual([
+      '--no-pager',
+      'log',
+      `--pretty=tformat:%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI`,
+      '--after=123456789',
+      '--until=123456989',
+      `--max-count=${MAX_COMMITS_IN_GIT_LOG}`,
+    ]);
   });
 
   it('can parse a git log (Linux/OSX line endings)', () => {
