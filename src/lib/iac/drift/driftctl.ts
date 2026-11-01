@@ -198,10 +198,21 @@ const generateScanFlags = async (
     args.push(createIgnorePattern(services));
   }
 
-  debug(args);
+  debug(sanitizeArgs(args));
 
   return args;
 };
+
+export function sanitizeArgs(args: string[]): string[] {
+  const sensitiveFlags = new Set(['--tfc-token', '--headers']);
+  const sanitized = [...args];
+  for (let i = 0; i < sanitized.length - 1; i++) {
+    if (sensitiveFlags.has(sanitized[i])) {
+      sanitized[i + 1] = '[REDACTED]';
+    }
+  }
+  return sanitized;
+}
 
 export function translateExitCode(exitCode: number | null): number {
   switch (exitCode) {
@@ -236,7 +247,7 @@ export const runDriftCTL = async ({
     stdio = ['pipe', 'pipe', 'inherit'];
   }
 
-  debug('running driftctl %s ', args.join(' '));
+  debug('running driftctl %s ', sanitizeArgs(args).join(' '));
 
   const dctl_env: NodeJS.ProcessEnv = restoreEnvProxy({
     ...process.env,
@@ -250,20 +261,28 @@ export const runDriftCTL = async ({
 
   let stdout = '';
   return new Promise<DriftctlExecutionResult>((resolve, reject) => {
+    let returned = false;
+
     if (input) {
       p.stdin?.write(input);
       p.stdin?.end();
     }
     p.on('error', (error) => {
-      reject(error);
+      if (!returned) {
+        returned = true;
+        reject(error);
+      }
     });
 
     p.stdout?.on('data', (data) => {
       stdout += data;
     });
 
-    p.on('exit', (code) => {
-      resolve({ code: translateExitCode(code), stdout });
+    p.on('close', (code) => {
+      if (!returned) {
+        returned = true;
+        resolve({ code: translateExitCode(code), stdout });
+      }
     });
   });
 };
