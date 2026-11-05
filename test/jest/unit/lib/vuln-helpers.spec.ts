@@ -14,12 +14,16 @@ import {
 describe('vuln-helpers', () => {
   describe('isNewVuln', () => {
     it('returns true for vulnerabilities published within the last month', () => {
-      const recentDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+      const recentDate = new Date(
+        Date.now() - 10 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       expect(isNewVuln({ publicationTime: recentDate })).toBe(true);
     });
 
     it('returns false for vulnerabilities published over a month ago', () => {
-      const oldDate = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+      const oldDate = new Date(
+        Date.now() - 40 * 24 * 60 * 60 * 1000,
+      ).toISOString();
       expect(isNewVuln({ publicationTime: oldDate })).toBe(false);
     });
   });

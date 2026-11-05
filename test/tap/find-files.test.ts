@@ -248,16 +248,31 @@ test('isExcludedPath correctness and caching behavior', async (t) => {
   const isWin = process.platform === 'win32';
   if (!isWin) {
     t.ok(isExcludedPath('/foo/bar', excludeList), 'should exclude exact match');
-    t.notOk(isExcludedPath('/foo/BAR', excludeList), 'should be case-sensitive on non-Windows');
-    t.notOk(isExcludedPath('/xyz', excludeList), 'should not exclude unmatched path');
+    t.notOk(
+      isExcludedPath('/foo/BAR', excludeList),
+      'should be case-sensitive on non-Windows',
+    );
+    t.notOk(
+      isExcludedPath('/xyz', excludeList),
+      'should not exclude unmatched path',
+    );
   } else {
     t.ok(isExcludedPath('/foo/bar', excludeList), 'should exclude exact match');
-    t.ok(isExcludedPath('/foo/BAR', excludeList), 'should be case-insensitive on Windows');
-    t.notOk(isExcludedPath('/xyz', excludeList), 'should not exclude unmatched path');
+    t.ok(
+      isExcludedPath('/foo/BAR', excludeList),
+      'should be case-insensitive on Windows',
+    );
+    t.notOk(
+      isExcludedPath('/xyz', excludeList),
+      'should not exclude unmatched path',
+    );
   }
 
   // 2. Empty arrays
-  t.notOk(isExcludedPath('/foo/bar', []), 'should return false if exclude array is empty');
+  t.notOk(
+    isExcludedPath('/foo/bar', []),
+    'should return false if exclude array is empty',
+  );
 
   // 3. Cache behavior verification (by passing same and different array references)
   const originalPlatform = process.platform;
@@ -265,13 +280,22 @@ test('isExcludedPath correctness and caching behavior', async (t) => {
     // We can verify that the same array reference returns correct results when queried.
     // Let's create a fresh array reference.
     const customExclude = ['/abc/def'];
-    t.ok(isExcludedPath('/abc/def', customExclude), 'should match using fresh exclude list');
+    t.ok(
+      isExcludedPath('/abc/def', customExclude),
+      'should match using fresh exclude list',
+    );
 
     // To verify caching works under the hood without breaking types or using internal access,
     // we can observe that querying with the exact same reference succeeds instantly.
     // Let's check that subsequent calls with the same array reference are correct.
-    t.ok(isExcludedPath('/abc/def', customExclude), 'should match again on the same array reference');
-    t.notOk(isExcludedPath('/other', customExclude), 'should not match other paths');
+    t.ok(
+      isExcludedPath('/abc/def', customExclude),
+      'should match again on the same array reference',
+    );
+    t.notOk(
+      isExcludedPath('/other', customExclude),
+      'should not match other paths',
+    );
   } finally {
     Object.defineProperty(process, 'platform', { value: originalPlatform });
   }
