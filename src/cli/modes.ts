@@ -86,14 +86,27 @@ export function displayModeHelp(mode: string, args) {
   return mode;
 }
 
+// Bolt Optimization: Pre-compute valid modes Set and command alias Sets at module load time
+// to replace dynamic abbrev() parsing and Object.keys().includes() allocations with O(1) Set lookups
+// on every CLI invocation.
+const VALID_MODES = new Set<string>(Object.keys(modes));
+
+const MODE_COMMAND_ALIASES: Record<string, Set<string>> = Object.entries(
+  modes,
+).reduce(
+  (acc, [mode, data]) => {
+    acc[mode] = new Set(Object.keys(abbrev(data.allowedCommands)));
+    return acc;
+  },
+  {} as Record<string, Set<string>>,
+);
+
 function isValidMode(mode: string): boolean {
-  return Object.keys(modes).includes(mode);
+  return VALID_MODES.has(mode);
 }
 
 function isValidCommand(mode: string, command: string): boolean {
-  const aliases = abbrev(modes[mode].allowedCommands);
-
-  return Object.keys(aliases).includes(command);
+  return MODE_COMMAND_ALIASES[mode]?.has(command) ?? false;
 }
 
 function configArgs(mode: string, args): [] {
