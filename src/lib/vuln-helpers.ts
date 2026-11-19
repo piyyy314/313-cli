@@ -13,12 +13,24 @@ export function hasFixes(testResults: any[]): boolean {
   return testResults.some(isFixable);
 }
 
+// Helper to check if an object has any own enumerable keys without allocating an array
+function hasKeys(obj: object): boolean {
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function isUpgradable(testResult: any): boolean {
   if (testResult.remediation) {
     const {
       remediation: { upgrade = {}, pin = {} },
     } = testResult;
-    return Object.keys(upgrade).length > 0 || Object.keys(pin).length > 0;
+    // Bolt Optimization: Use O(1) early-exit `hasKeys` helper instead of `Object.keys().length > 0`
+    // to avoid allocating unnecessary arrays during vulnerability checks.
+    return hasKeys(upgrade) || hasKeys(pin);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;
@@ -34,7 +46,9 @@ export function isPatchable(testResult: any): boolean {
     const {
       remediation: { patch = {} },
     } = testResult;
-    return Object.keys(patch).length > 0;
+    // Bolt Optimization: Use O(1) early-exit `hasKeys` helper instead of `Object.keys().length > 0`
+    // to avoid allocating unnecessary arrays during vulnerability checks.
+    return hasKeys(patch);
   }
   // if remediation is not available, fallback on vuln properties
   const { vulnerabilities = {} } = testResult;

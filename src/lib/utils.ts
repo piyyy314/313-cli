@@ -19,20 +19,33 @@ const SENSITIVE_KEYS = [
   'api-key',
 ];
 
+function normalizeKey(key: string): string {
+  return key.toLowerCase().replace(/[-_]/g, '');
+}
+
+function recursiveObfuscate(obj: any, visited = new WeakSet()): void {
+  if (!obj || typeof obj !== 'object' || visited.has(obj)) {
+    return;
+  }
+  visited.add(obj);
+
+  for (const key of Object.keys(obj)) {
+    const normalized = normalizeKey(key);
+    if (NORMALIZED_SENSITIVE_KEYS.has(normalized)) {
+      if (obj[key] !== undefined && obj[key] !== null) {
+        obj[key] = `${key}-set`;
+      }
+    } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+      recursiveObfuscate(obj[key], visited);
+    }
+  }
+}
+
 export function obfuscateArgs(
   args: ArgsOptions | MethodArgs,
 ): ArgsOptions | MethodArgs {
   const obfuscatedArgs = cloneDeep(args);
-
-  for (const key of SENSITIVE_KEYS) {
-    if (obfuscatedArgs[key]) {
-      obfuscatedArgs[key] = `${key}-set`;
-    }
-    if (obfuscatedArgs[1] && obfuscatedArgs[1][key]) {
-      obfuscatedArgs[1][key] = `${key}-set`;
-    }
-  }
-
+  recursiveObfuscate(obfuscatedArgs);
   return obfuscatedArgs;
 }
 

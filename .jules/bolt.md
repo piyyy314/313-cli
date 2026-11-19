@@ -1,4 +1,4 @@
-# Bolt's Journal
+## 2025-05-18 - Avoid Object.keys() allocations in vulnerability predicate checks
 
 ## 2026-08-10 - Optimizing Environment & Container Detection Checks
 
