@@ -147,6 +147,30 @@ describe('Sanitize args', () => {
     expect(result.auth).toEqual('auth-set');
   });
 
+  it('should obfuscate sensitive credentials regardless of casing and delimiters', () => {
+    const argsWithVariedFormatting = {
+      _doubleDashArgs: [],
+      _: ['test'],
+      CLIENT_SECRET: 'super-secret-123',
+      snyk_token: 'token-abc',
+      'ACCESS-TOKEN': 'access-xyz',
+      Refresh_Token: 'refresh-789',
+      USER_NAME: 'admin-user',
+      pass_word: 'admin-pass',
+      AUTHORIZATION: 'Bearer token',
+    };
+
+    const result = obfuscateArgs(argsWithVariedFormatting) as any;
+
+    expect(result.CLIENT_SECRET).toEqual('CLIENT_SECRET-set');
+    expect(result.snyk_token).toEqual('snyk_token-set');
+    expect(result['ACCESS-TOKEN']).toEqual('ACCESS-TOKEN-set');
+    expect(result.Refresh_Token).toEqual('Refresh_Token-set');
+    expect(result.USER_NAME).toEqual('USER_NAME-set');
+    expect(result.pass_word).toEqual('pass_word-set');
+    expect(result.AUTHORIZATION).toEqual('AUTHORIZATION-set');
+  });
+
   it('should handle cyclic references gracefully without infinite loops', () => {
     const cyclicArgs: any = {
       _doubleDashArgs: [],

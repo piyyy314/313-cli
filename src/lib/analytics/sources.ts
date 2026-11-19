@@ -173,11 +173,9 @@ export async function isInstalled(commandToCheck: string): Promise<boolean> {
   let whichCommand = 'which';
   let args = [commandToCheck];
   const os = process.platform;
-  let file = 'which';
-  let args = [commandToCheck];
 
   if (os === 'win32') {
-    file = 'where';
+    whichCommand = 'where';
   } else if (os === 'android') {
     whichCommand = 'adb';
     args = ['shell', 'which', commandToCheck];

@@ -146,11 +146,23 @@ export async function runGitLog(
   timestampEpochSecondsStartOfPeriod: number,
   timestampEpochSecondsEndOfPeriod: number,
   repoPath: string,
-  fnShellout: (cmd: string, workingDirectory: string) => Promise<string>,
+  fnShellout: (
+    file: string,
+    args: string[],
+    workingDirectory: string,
+  ) => Promise<string> = execShell,
 ): Promise<string> {
   try {
-    const gitLogCommand = `git --no-pager log --pretty=tformat:"%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI" --after="${timestampEpochSecondsStartOfPeriod}" --until="${timestampEpochSecondsEndOfPeriod}" --max-count=${MAX_COMMITS_IN_GIT_LOG}`;
-    const gitLogStdout: string = await fnShellout(gitLogCommand, repoPath);
+    // Use discrete argument array with execFile instead of shell string interpolation to prevent OS command injection
+    const gitLogArgs = [
+      '--no-pager',
+      'log',
+      `--pretty=tformat:%H${SERIOUS_DELIMITER}%an${SERIOUS_DELIMITER}%ae${SERIOUS_DELIMITER}%aI`,
+      `--after=${timestampEpochSecondsStartOfPeriod}`,
+      `--until=${timestampEpochSecondsEndOfPeriod}`,
+      `--max-count=${MAX_COMMITS_IN_GIT_LOG}`,
+    ];
+    const gitLogStdout: string = await fnShellout('git', gitLogArgs, repoPath);
     return gitLogStdout;
   } catch {
     return '';
@@ -162,7 +174,8 @@ export function separateLines(inputText: string): string[] {
 }
 
 export function execShell(
-  cmd: string,
+  file: string,
+  args: string[],
   workingDirectory: string,
 ): Promise<string> {
   const options = {
@@ -182,7 +195,7 @@ export function execShell(
 
         const e = new ShellOutError(
           error.message,
-          exitCode,
+          typeof exitCode === 'number' ? exitCode : undefined,
           stdout,
           stderr,
           error,
