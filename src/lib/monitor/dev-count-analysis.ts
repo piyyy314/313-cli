@@ -182,9 +182,14 @@ export function execShell(
     cwd: workingDirectory,
   };
 
+  // Parse command string into binary and arguments array to prevent OS command injection
+  const tokens = (cmd.match(/"[^"]*"|\S+/g) || []).map((arg) =>
+    arg.startsWith('"') && arg.endsWith('"') ? arg.slice(1, -1) : arg,
+  );
+  const file = tokens.shift() || 'git';
+
   return new Promise((resolve, reject) => {
-    // Use execFile to avoid spawning a shell and eliminate OS command injection vulnerabilities
-    execFile(file, args, options, (error, stdout, stderr) => {
+    execFile(file, tokens, options, (error, stdout, stderr) => {
       if (error) {
         const exitCode = error.code;
 

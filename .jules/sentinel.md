@@ -6,10 +6,10 @@
 
 **Prevention:** When sanitizing or constructing clean URLs from `url.parse()`, construct the clean host using `hostname` and optional `port` rather than `host` to prevent leaking embedded basic auth or token credentials in analytics, monitor payloads, or debug logs.
 
-## 2025-05-18 - Parameterized Command Execution for Git Log Analysis
+## 2025-05-18 - Prevent Command Injection in Git Log Analysis
 
-**Vulnerability:** In `src/lib/monitor/dev-count-analysis.ts`, git log command strings were constructed via string interpolation and executed via `child_process.exec()`, allowing potential command injection if parameters or paths contained shell metacharacters.
+**Vulnerability:** `execShell` in `src/lib/monitor/dev-count-analysis.ts` used `child_process.exec` to execute `git log` string commands, spawning an OS shell environment susceptible to command injection if paths or parameters were modified.
 
-**Learning:** Invoking external commands via `exec` spawns a system shell (`/bin/sh` or `cmd.exe`) which evaluates shell metacharacters, whereas `execFile` executes binaries directly with discrete argument arrays without shell interpolation.
+**Learning:** Calling `exec` spawns a system shell (`/bin/sh` or `cmd.exe`) which interprets shell metacharacters in command strings.
 
-**Prevention:** Always use `execFile` or `spawn` with discrete argument arrays rather than concatenating command strings with `exec` when shelling out to git or other CLI utilities.
+**Prevention:** Use `child_process.execFile` with discrete argument arrays rather than shell execution string commands via `exec` to execute binaries securely without shell subshell spawning.
