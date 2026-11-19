@@ -121,16 +121,19 @@ marked.setOptions({
   mangle: false,
 });
 
-// Pre-compiled regex replacements to avoid repeated RegExp instantiation and Object.entries allocation per call
-const HTML_UNESCAPE_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/&amp;/g, '&'],
-  [/&lt;/g, '<'],
-  [/&gt;/g, '>'],
-  [/&quot;/g, '"'],
-  [/&#39;/g, "'"],
-  [/&#96;/g, '`'],
-  [/&#x20;/g, ''],
-];
+const htmlUnescapes: Record<string, string> = {
+  '&amp;': '&',
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#39;': "'",
+  '&#96;': '`',
+  '&#x20;': '',
+};
+
+// Pre-compiled regex for HTML unescaping to eliminate dynamic RegExp instantiation
+// and array iterations on every markdown render call.
+const HTML_UNESCAPE_RE = /&(?:amp|lt|gt|quot|#(?:39|96|x20));/g;
 
 /**
  * @description Replace HTML entities with their non-encoded variant
@@ -138,11 +141,10 @@ const HTML_UNESCAPE_REPLACEMENTS: Array<[RegExp, string]> = [
  * @returns {string}
  */
 function unescape(text: string): string {
-  for (let i = 0; i < HTML_UNESCAPE_REPLACEMENTS.length; i++) {
-    const [regex, replacement] = HTML_UNESCAPE_REPLACEMENTS[i];
-    text = text.replace(regex, replacement);
-  }
-  return text;
+  return text.replace(
+    HTML_UNESCAPE_RE,
+    (match) => htmlUnescapes[match] ?? match,
+  );
 }
 
 export function renderMarkdown(markdown: string): string {

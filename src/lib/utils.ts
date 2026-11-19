@@ -9,24 +9,15 @@ export function countPathsToGraphRoot(graph: DepGraph): number {
     .reduce((acc, pkg) => acc + graph.countPathsToRoot(pkg), 0);
 }
 
-const NORMALIZED_SENSITIVE_KEYS = new Set([
+const SENSITIVE_KEYS = [
   'username',
   'password',
   'token',
-  'tfctoken',
-  'azurermaccountkey',
-  'fetchtfstateheaders',
-  'apikey',
-  'snyktoken',
-  'oauthtoken',
-  'auth',
-  'authorization',
-  'clientsecret',
-  'secret',
-  'accesstoken',
-  'refreshtoken',
-  'credential',
-]);
+  'tfc-token',
+  'azurerm-account-key',
+  'fetch-tfstate-headers',
+  'api-key',
+];
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().replace(/[-_]/g, '');

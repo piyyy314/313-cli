@@ -19,10 +19,13 @@ const LOCK_FILES_TO_MANIFEST_MAP = {
   'poetry.lock': 'pyproject.toml',
 };
 
-// Pre-compiled regexes to avoid repeated RegExp instantiation and Object.entries allocation per call
-const LOCK_FILE_REPLACEMENTS: Array<[RegExp, string]> = Object.entries(
-  LOCK_FILES_TO_MANIFEST_MAP,
-).map(([key, replacer]) => [new RegExp(key, 'g'), replacer]);
+// Pre-compiled regular expressions for lockfile replacement to eliminate repeated dynamic RegExp allocations per invocation
+const LOCK_FILE_REPLACEMENTS = Object.entries(LOCK_FILES_TO_MANIFEST_MAP).map(
+  ([key, replacer]) => ({
+    regex: new RegExp(key, 'g'),
+    replacer,
+  }),
+);
 
 export function createSarifOutputForOpenSource(
   testResults: TestResult[],
@@ -63,8 +66,7 @@ export function createSarifOutputForOpenSource(
 
 function replaceLockfileWithManifest(testResult: TestResult): TestResult {
   let targetFile = testResult.displayTargetFile || '';
-  for (let i = 0; i < LOCK_FILE_REPLACEMENTS.length; i++) {
-    const [regex, replacer] = LOCK_FILE_REPLACEMENTS[i];
+  for (const { regex, replacer } of LOCK_FILE_REPLACEMENTS) {
     targetFile = targetFile.replace(regex, replacer);
   }
   return {
