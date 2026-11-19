@@ -208,13 +208,13 @@ describe('getIntegrationEnvironmentVersion', () => {
 });
 
 describe('isInstalled', () => {
-  it('returns false when checking non-existent command safely', async () => {
-    const installed = await isInstalled('non_existent_binary_xyz_123');
-    expect(installed).toBe(false);
-  });
-
-  it('returns true when checking common installed binary node safely', async () => {
+  it('returns true for installed command', async () => {
     const installed = await isInstalled('node');
     expect(installed).toBe(true);
+  });
+
+  it('returns false for non-existent command', async () => {
+    const installed = await isInstalled('non_existent_binary_xyz_123');
+    expect(installed).toBe(false);
   });
 });

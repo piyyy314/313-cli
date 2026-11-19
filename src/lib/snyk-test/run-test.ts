@@ -1003,12 +1003,13 @@ function addPackageAnalytics(name: string, version: string): void {
   analytics.add('package', name + '@' + version);
 }
 
-function countUniqueVulns(vulns: AnnotatedIssue[]): number {
-  const seen = {};
+// Bolt Optimization: Use a Set to track unique vulnerability IDs instead of creating a plain object and calling Object.keys(), eliminating intermediate key array allocations.
+export function countUniqueVulns(vulns: AnnotatedIssue[]): number {
+  const seen = new Set<string>();
   for (const curr of vulns) {
-    seen[curr.id] = true;
+    seen.add(curr.id);
   }
-  return Object.keys(seen).length;
+  return seen.size;
 }
 
 function extractErrorMessages(
